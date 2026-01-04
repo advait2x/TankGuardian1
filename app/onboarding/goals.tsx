@@ -35,7 +35,7 @@ export default function GoalsScreen() {
 
   const handleContinue = () => {
     updateUser({ goals: selectedGoals });
-    router.push('/onboarding/paywall');
+    router.push('/onboarding/create-tank');
   };
 
   return (
@@ -63,13 +63,13 @@ export default function GoalsScreen() {
         >
           {/* Title */}
           <Animated.Text 
-            entering={FadeInDown.delay(100).duration(400)}
+            entering={FadeInDown.delay(100).duration(220)}
             style={styles.title}
           >
             What are your goals?
           </Animated.Text>
           <Animated.Text 
-            entering={FadeInDown.delay(200).duration(400)}
+            entering={FadeInDown.delay(200).duration(220)}
             style={styles.subtitle}
           >
             Select all that apply. We'll personalize your experience based on your interests.
@@ -84,7 +84,7 @@ export default function GoalsScreen() {
               return (
                 <Animated.View
                   key={goal.id}
-                  entering={FadeInDown.delay(300 + index * 50).duration(400)}
+                  entering={FadeInDown.delay(300 + index * 50).duration(220)}
                   style={{ width: '48%' }}
                 >
                   <TouchableOpacity
@@ -118,7 +118,7 @@ export default function GoalsScreen() {
 
         {/* CTA */}
         <Animated.View 
-          entering={FadeIn.delay(600).duration(400)}
+          entering={FadeIn.delay(600).duration(220)}
           style={styles.ctaContainer}
         >
           <Button

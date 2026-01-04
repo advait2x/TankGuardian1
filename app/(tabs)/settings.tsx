@@ -69,7 +69,7 @@ export default function SettingsScreen() {
       
       <SafeAreaView style={styles.safeArea} edges={['top']}>
         {/* Header */}
-        <Animated.View entering={FadeInDown.duration(300)} style={styles.header}>
+        <Animated.View entering={FadeInDown.duration(220)} style={styles.header}>
           <Text style={styles.title}>Settings</Text>
         </Animated.View>
 
@@ -100,7 +100,7 @@ export default function SettingsScreen() {
           </GlassCard>
 
           {/* Subscription Section */}
-          <Animated.View entering={FadeInDown.delay(150).duration(400)}>
+          <Animated.View entering={FadeInDown.delay(150).duration(220)}>
             <Text style={styles.sectionTitle}>Subscription</Text>
             <GlassCard 
               style={styles.subscriptionCard}
@@ -132,7 +132,7 @@ export default function SettingsScreen() {
           </Animated.View>
 
           {/* Notifications Section */}
-          <Animated.View entering={FadeInDown.delay(200).duration(400)}>
+          <Animated.View entering={FadeInDown.delay(200).duration(220)}>
             <Text style={styles.sectionTitle}>Notifications</Text>
             <GlassCard style={styles.settingsGroup}>
               <View style={styles.settingItem}>
@@ -190,7 +190,7 @@ export default function SettingsScreen() {
           </Animated.View>
 
           {/* Account Section */}
-          <Animated.View entering={FadeInDown.delay(250).duration(400)}>
+          <Animated.View entering={FadeInDown.delay(250).duration(220)}>
             <Text style={styles.sectionTitle}>Account</Text>
             <GlassCard style={styles.settingsGroup}>
               <View style={styles.settingItem}>
@@ -238,7 +238,7 @@ export default function SettingsScreen() {
           </Animated.View>
 
           {/* Support Section */}
-          <Animated.View entering={FadeInDown.delay(300).duration(400)}>
+          <Animated.View entering={FadeInDown.delay(300).duration(220)}>
             <Text style={styles.sectionTitle}>Support</Text>
             <GlassCard style={styles.settingsGroup}>
               <TouchableOpacity style={styles.settingItem}>
@@ -268,7 +268,7 @@ export default function SettingsScreen() {
           </Animated.View>
 
           {/* Logout */}
-          <Animated.View entering={FadeInDown.delay(350).duration(400)}>
+          <Animated.View entering={FadeInDown.delay(350).duration(220)}>
             <TouchableOpacity 
               style={styles.logoutButton}
               onPress={() => setShowLogoutModal(true)}

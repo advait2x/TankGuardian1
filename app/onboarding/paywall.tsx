@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-nati
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Animated, { FadeInDown, FadeIn } from 'react-native-reanimated';
-import { ArrowLeft, Check, Crown, Infinity, Fish, Bell, Search, MessageCircle, Sparkles } from 'lucide-react-native';
+import { ArrowLeft, Check, Crown, Infinity, Fish, Bell, Search, Sparkles } from 'lucide-react-native';
 import AnimatedBackground from '@/components/ui/AnimatedBackground';
 import Button from '@/components/ui/Button';
 import GlassCard from '@/components/ui/GlassCard';
@@ -13,15 +13,14 @@ import * as Haptics from 'expo-haptics';
 
 const benefits = [
   { icon: Infinity, text: 'Unlimited tanks' },
-  { icon: Fish, text: 'Interactive tank simulation' },
-  { icon: Bell, text: 'Advanced reminders' },
-  { icon: Search, text: 'Disease check history' },
-  { icon: MessageCircle, text: 'Community & creator messaging' },
+  { icon: Fish, text: 'Add fish to your tanks' },
+  { icon: Bell, text: 'Advanced reminders & notifications' },
+  { icon: Search, text: 'Unlimited disease checks & history' },
 ];
 
 export default function PaywallScreen() {
   const router = useRouter();
-  const { setPremium, useFreeTrial, hasUsedFreeTrial } = useApp();
+  const { setPremium, useFreeTrial, hasUsedFreeTrial, tanks } = useApp();
   const { showToast } = useToast();
   const [selectedPlan, setSelectedPlan] = useState<'monthly' | 'yearly'>('yearly');
 
@@ -30,12 +29,24 @@ export default function PaywallScreen() {
     setPremium(true);
     useFreeTrial();
     showToast('Free trial activated! Enjoy premium features.', 'success');
+    
+    // If user already has tanks, go to main app, otherwise go to create tank
+    if (tanks.length > 0) {
+      router.back();
+    } else {
     router.push('/onboarding/create-tank');
+    }
   };
 
   const handleContinueFree = async () => {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    
+    // If user already has tanks, go back, otherwise go to create tank
+    if (tanks.length > 0) {
+      router.back();
+    } else {
     router.push('/onboarding/create-tank');
+    }
   };
 
   return (
@@ -63,7 +74,7 @@ export default function PaywallScreen() {
         >
           {/* Crown Icon */}
           <Animated.View 
-            entering={FadeIn.delay(100).duration(500)}
+            entering={FadeIn.delay(100).duration(240)}
             style={styles.crownContainer}
           >
             <View style={styles.crownIcon}>
@@ -73,13 +84,13 @@ export default function PaywallScreen() {
 
           {/* Title */}
           <Animated.Text 
-            entering={FadeInDown.delay(200).duration(400)}
+            entering={FadeInDown.delay(200).duration(220)}
             style={styles.title}
           >
             Unlock Premium
           </Animated.Text>
           <Animated.Text 
-            entering={FadeInDown.delay(300).duration(400)}
+            entering={FadeInDown.delay(300).duration(220)}
             style={styles.subtitle}
           >
             Get unlimited access to all features and keep your fish thriving
@@ -87,7 +98,7 @@ export default function PaywallScreen() {
 
           {/* Plan Cards */}
           <Animated.View 
-            entering={FadeInDown.delay(400).duration(400)}
+            entering={FadeInDown.delay(400).duration(220)}
             style={styles.plansContainer}
           >
             {/* Yearly Plan */}
@@ -155,7 +166,7 @@ export default function PaywallScreen() {
 
           {/* Benefits List */}
           <Animated.View 
-            entering={FadeInDown.delay(500).duration(400)}
+            entering={FadeInDown.delay(500).duration(220)}
             style={styles.benefitsContainer}
           >
             {benefits.map((benefit, index) => {
@@ -174,7 +185,7 @@ export default function PaywallScreen() {
 
         {/* CTA */}
         <Animated.View 
-          entering={FadeIn.delay(600).duration(400)}
+          entering={FadeIn.delay(600).duration(220)}
           style={styles.ctaContainer}
         >
           <Button

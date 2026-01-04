@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -6,7 +6,6 @@ import Animated, { FadeInDown, FadeIn } from 'react-native-reanimated';
 import { 
   Search, 
   Filter, 
-  Fish as FishIcon,
   Leaf,
   Box,
   Wrench,
@@ -14,23 +13,28 @@ import {
   Check,
   X
 } from 'lucide-react-native';
+import MascotIcon from '@/components/mascot/MascotIcon';
+import FishThumb from '@/components/FishThumb';
 import AnimatedBackground from '@/components/ui/AnimatedBackground';
 import GlassCard from '@/components/ui/GlassCard';
 import Button from '@/components/ui/Button';
 import Badge from '@/components/ui/Badge';
 import Chip from '@/components/ui/Chip';
 import Modal from '@/components/ui/Modal';
-import Mascot from '@/components/ui/Mascot';
+import AddToTankSheet from '@/components/sheets/AddToTankSheet';
+import { useMascot } from '@/components/mascot/MascotContext';
 import { useApp } from '@/store/AppContext';
 import { useToast } from '@/components/ui/Toast';
-import { fishSpecies, plants, equipment, decor, generateId } from '@/data/mockData';
+import { fishSpecies as mockFishSpecies, plants, equipment, decor, generateId } from '@/data/mockData';
 import { FishSpecies } from '@/data/types';
+import { getFishCatalog } from '@/utils/fishCatalogAdapter';
+import { getSpeciesBySlugSync } from '@/utils/tankSpeciesLookup';
 import * as Haptics from 'expo-haptics';
 
 type CatalogTab = 'fish' | 'plants' | 'decor' | 'equipment';
 
 const tabs: { id: CatalogTab; label: string; icon: any }[] = [
-  { id: 'fish', label: 'Fish', icon: FishIcon },
+  { id: 'fish', label: 'Fish', icon: () => <MascotIcon variant="search" size={24} withHalo={false} /> },
   { id: 'plants', label: 'Plants', icon: Leaf },
   { id: 'decor', label: 'Decor', icon: Box },
   { id: 'equipment', label: 'Equipment', icon: Wrench },
@@ -41,34 +45,87 @@ const difficultyFilters = ['easy', 'medium', 'hard'];
 
 export default function CatalogScreen() {
   const router = useRouter();
-  const { tanks, selectedTankId, addFishToTank } = useApp();
+  const { tanks, selectedTankId, addFishToTank, addFishInstances, isPremium } = useApp();
   const { showToast } = useToast();
+  const { showMascot, hideMascot } = useMascot();
   
   const [activeTab, setActiveTab] = useState<CatalogTab>('fish');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedTemperament, setSelectedTemperament] = useState<string[]>([]);
   const [selectedDifficulty, setSelectedDifficulty] = useState<string[]>([]);
+  const [selectedWaterType, setSelectedWaterType] = useState<string[]>([]); // NEW: Water type filter
   const [showFilters, setShowFilters] = useState(false);
   const [selectedSpecies, setSelectedSpecies] = useState<FishSpecies | null>(null);
   const [showCompatibilityModal, setShowCompatibilityModal] = useState(false);
+  const [showAddToTankSheet, setShowAddToTankSheet] = useState(false);
   const [compatibilityWarnings, setCompatibilityWarnings] = useState<string[]>([]);
+  const [fishCatalog, setFishCatalog] = useState<FishSpecies[]>(mockFishSpecies);
+  const [isLoadingFish, setIsLoadingFish] = useState(false);
+  const [showPaywall, setShowPaywall] = useState(false);
 
   const selectedTank = tanks.find(t => t.id === selectedTankId);
 
-  // Filter fish based on search and filters
+  // Load fish catalog on mount and when search/filters change
+  useEffect(() => {
+    if (activeTab !== 'fish') return;
+    
+    let mounted = true;
+    setIsLoadingFish(true);
+
+    // Determine waterType for database query (if exactly one type is selected)
+    const dbWaterType = selectedWaterType.length === 1 
+      ? (selectedWaterType[0] as 'freshwater' | 'saltwater' | 'brackish')
+      : undefined; // Don't filter if 0 or multiple selected
+
+    if (__DEV__ && dbWaterType) {
+      console.log('[Catalog] waterType filter:', dbWaterType);
+    }
+
+    getFishCatalog({ 
+      search: searchQuery,
+      waterType: dbWaterType 
+    })
+      .then(catalog => {
+        if (mounted) {
+          setFishCatalog(catalog);
+          setIsLoadingFish(false);
+        }
+      })
+      .catch(() => {
+        if (mounted) {
+          // On error, use mock data
+          setFishCatalog(mockFishSpecies);
+          setIsLoadingFish(false);
+        }
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, [activeTab, searchQuery, selectedWaterType]); // Added selectedWaterType dependency
+
+  useEffect(() => {
+    // Show search mascot on catalog screen briefly
+    showMascot('search', 'top-right', 'Tap any fish to check compatibility!', 3000);
+    return () => {
+      hideMascot();
+    };
+  }, []);
+
   const filteredFish = useMemo(() => {
-    return fishSpecies.filter(fish => {
+    return fishCatalog.filter(fish => {
       const matchesSearch = fish.commonName.toLowerCase().includes(searchQuery.toLowerCase()) ||
                            fish.scientificName.toLowerCase().includes(searchQuery.toLowerCase());
       const matchesTemperament = selectedTemperament.length === 0 || 
                                  selectedTemperament.includes(fish.temperament);
       const matchesDifficulty = selectedDifficulty.length === 0 || 
                                 selectedDifficulty.includes(fish.difficulty);
-      return matchesSearch && matchesTemperament && matchesDifficulty;
+      const matchesWaterType = selectedWaterType.length === 0 || 
+                               selectedWaterType.includes(fish.waterType);
+      return matchesSearch && matchesTemperament && matchesDifficulty && matchesWaterType;
     });
-  }, [searchQuery, selectedTemperament, selectedDifficulty]);
+  }, [fishCatalog, searchQuery, selectedTemperament, selectedDifficulty, selectedWaterType]);
 
-  // Check compatibility when adding fish
   const checkCompatibility = (species: FishSpecies): string[] => {
     const warnings: string[] = [];
     
@@ -77,33 +134,32 @@ export default function CatalogScreen() {
       return warnings;
     }
 
-    // Check tank size
+    // Check water type compatibility (CRITICAL - prevent mismatched water types)
+    if (species.waterType !== selectedTank.waterType) {
+      warnings.push(`Water type mismatch: ${species.commonName} is a ${species.waterType} fish and cannot be added to a ${selectedTank.waterType} tank`);
+      return warnings; // Return early - this is a hard blocker
+    }
+
     if (selectedTank.sizeGallons < species.minTankGallons) {
       warnings.push(`Tank too small: ${species.commonName} needs at least ${species.minTankGallons} gallons`);
     }
 
-    // Check temperament conflicts
-    const existingFish = selectedTank.fishInstances.map(f => 
-      fishSpecies.find(s => s.id === f.speciesId)
-    ).filter(Boolean);
+    const existingFish = selectedTank.fishInstances
+      .map(f => getSpeciesBySlugSync(f.speciesId, f))
+      .filter(Boolean) as FishSpecies[];
 
     for (const existing of existingFish) {
-      if (existing) {
-        // Aggressive with peaceful
         if ((species.temperament === 'aggressive' && existing.temperament === 'peaceful') ||
             (species.temperament === 'peaceful' && existing.temperament === 'aggressive')) {
           warnings.push(`Temperament conflict: ${species.commonName} (${species.temperament}) may not do well with ${existing.commonName} (${existing.temperament})`);
-        }
       }
     }
 
-    // Check schooling requirements
     if (species.schooling && species.recommendedGroupSize > 1) {
       warnings.push(`${species.commonName} is a schooling fish and should be kept in groups of ${species.recommendedGroupSize}+`);
     }
 
-    // Check overstocking
-    const currentBioload = existingFish.reduce((acc, f) => acc + (f?.adultSizeInches || 0), 0);
+    const currentBioload = existingFish.reduce((acc, f) => acc + f.adultSizeInches, 0);
     const newBioload = currentBioload + species.adultSizeInches;
     const maxBioload = selectedTank.sizeGallons * 1.2;
     
@@ -126,32 +182,47 @@ export default function CatalogScreen() {
   const handleAddToTank = async () => {
     if (!selectedTank || !selectedSpecies) return;
     
-    await Haptics.notificationAsync(
-      compatibilityWarnings.length > 0 
-        ? Haptics.NotificationFeedbackType.Warning 
-        : Haptics.NotificationFeedbackType.Success
-    );
+    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
 
-    addFishToTank(selectedTank.id, {
-      instanceId: generateId(),
-      speciesId: selectedSpecies.id,
-      nickname: '',
-      addedAt: new Date().toISOString(),
-    });
+    // Check if user has premium before allowing to add fish
+    if (!isPremium) {
+      setShowCompatibilityModal(false);
+      setShowPaywall(true);
+      return;
+    }
 
+    // Close compatibility modal and open AddToTankSheet
     setShowCompatibilityModal(false);
-    setSelectedSpecies(null);
-    showToast(`${selectedSpecies.commonName} added to ${selectedTank.name}!`, 'success');
+    setShowAddToTankSheet(true);
   };
 
-  const toggleFilter = (type: 'temperament' | 'difficulty', value: string) => {
+  const handleConfirmAddFish = async (quantity: number) => {
+    if (!selectedTank || !selectedSpecies) return;
+    
+    await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+
+    // Use the new batch add method
+    addFishInstances(selectedTank.id, selectedSpecies.id, quantity);
+
+    setShowAddToTankSheet(false);
+    setSelectedSpecies(null);
+    
+    const plural = quantity > 1 ? `${quantity} ${selectedSpecies.commonName}` : selectedSpecies.commonName;
+    showToast(`${plural} added to ${selectedTank.name}!`, 'success');
+  };
+
+  const toggleFilter = (type: 'temperament' | 'difficulty' | 'waterType', value: string) => {
     if (type === 'temperament') {
       setSelectedTemperament(prev => 
         prev.includes(value) ? prev.filter(t => t !== value) : [...prev, value]
       );
-    } else {
+    } else if (type === 'difficulty') {
       setSelectedDifficulty(prev => 
         prev.includes(value) ? prev.filter(d => d !== value) : [...prev, value]
+      );
+    } else if (type === 'waterType') {
+      setSelectedWaterType(prev => 
+        prev.includes(value) ? prev.filter(w => w !== value) : [...prev, value]
       );
     }
   };
@@ -159,22 +230,21 @@ export default function CatalogScreen() {
   const clearFilters = () => {
     setSelectedTemperament([]);
     setSelectedDifficulty([]);
+    setSelectedWaterType([]);
   };
 
-  const activeFiltersCount = selectedTemperament.length + selectedDifficulty.length;
+  const activeFiltersCount = selectedTemperament.length + selectedDifficulty.length + selectedWaterType.length;
 
   return (
     <View style={styles.container}>
       <AnimatedBackground variant="light" />
       
       <SafeAreaView style={styles.safeArea} edges={['top']}>
-        {/* Header */}
-        <Animated.View entering={FadeInDown.duration(300)} style={styles.header}>
+        <Animated.View entering={FadeInDown.duration(220)} style={styles.header}>
           <Text style={styles.title}>Catalog</Text>
         </Animated.View>
 
-        {/* Search Bar */}
-        <Animated.View entering={FadeInDown.delay(100).duration(300)} style={styles.searchContainer}>
+        <Animated.View entering={FadeInDown.delay(60).duration(220)} style={styles.searchContainer}>
           <View style={styles.searchInputContainer}>
             <Search size={20} color="#64748B" />
             <TextInput
@@ -203,8 +273,7 @@ export default function CatalogScreen() {
           </TouchableOpacity>
         </Animated.View>
 
-        {/* Tabs */}
-        <Animated.View entering={FadeInDown.delay(200).duration(300)} style={styles.tabsContainer}>
+        <Animated.View entering={FadeInDown.delay(120).duration(220)} style={styles.tabsContainer}>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tabs}>
             {tabs.map((tab) => {
               const Icon = tab.icon;
@@ -225,7 +294,6 @@ export default function CatalogScreen() {
           </ScrollView>
         </Animated.View>
 
-        {/* Content */}
         <ScrollView
           style={styles.scrollView}
           contentContainerStyle={styles.scrollContent}
@@ -233,22 +301,15 @@ export default function CatalogScreen() {
         >
           {activeTab === 'fish' && (
             <>
-              {/* Mascot hint */}
-              {filteredFish.length > 0 && (
-                <Animated.View entering={FadeIn.delay(400).duration(500)} style={styles.mascotHint}>
-                  <Mascot variant="search" size="small" animate={false} />
-                  <Text style={styles.mascotHintText}>
-                    Tap any fish to check compatibility with your tank!
-                  </Text>
-                </Animated.View>
-              )}
 
-              {/* Fish Grid */}
               <View style={styles.fishGrid}>
-                {filteredFish.map((fish, index) => (
+                {filteredFish.map((fish, index) => {
+                  const hasImage = (fish as any).image_key || (fish as any).imageKey;
+                  
+                  return (
                   <Animated.View
                     key={fish.id}
-                    entering={FadeInDown.delay(300 + index * 50).duration(300)}
+                      entering={FadeInDown.delay(180 + index * 30).duration(240)}
                     style={{ width: '48%' }}
                   >
                     <GlassCard 
@@ -256,9 +317,15 @@ export default function CatalogScreen() {
                       onPress={() => handleSelectSpecies(fish)}
                       animated={false}
                     >
+                        {hasImage ? (
+                          <View style={styles.fishCardIcon}>
+                            <FishThumb imageKey={(fish as any).image_key ?? (fish as any).imageKey ?? null} size={44} />
+                          </View>
+                        ) : (
                       <View style={[styles.fishCardIcon, { backgroundColor: fish.color }]}>
                         <Text style={{ fontSize: 28 }}>🐠</Text>
                       </View>
+                        )}
                       <Text style={styles.fishCardName} numberOfLines={1}>
                         {fish.commonName}
                       </Text>
@@ -275,12 +342,13 @@ export default function CatalogScreen() {
                       </View>
                     </GlassCard>
                   </Animated.View>
-                ))}
+                  );
+                })}
               </View>
 
               {filteredFish.length === 0 && (
                 <View style={styles.emptyState}>
-                  <FishIcon size={48} color="#94A3B8" />
+                  <MascotIcon variant="search" size={80} />
                   <Text style={styles.emptyTitle}>No fish found</Text>
                   <Text style={styles.emptyText}>Try adjusting your filters or search</Text>
                   {activeFiltersCount > 0 && (
@@ -301,7 +369,7 @@ export default function CatalogScreen() {
               {plants.map((plant, index) => (
                 <Animated.View
                   key={plant.id}
-                  entering={FadeInDown.delay(300 + index * 50).duration(300)}
+                  entering={FadeInDown.delay(180 + index * 30).duration(240)}
                   style={{ width: '48%' }}
                 >
                   <GlassCard style={styles.fishCard} animated={false}>
@@ -333,7 +401,7 @@ export default function CatalogScreen() {
               {equipment.map((item, index) => (
                 <Animated.View
                   key={item.id}
-                  entering={FadeInDown.delay(300 + index * 50).duration(300)}
+                  entering={FadeInDown.delay(180 + index * 30).duration(240)}
                   style={{ width: '48%' }}
                 >
                   <GlassCard style={styles.fishCard} animated={false}>
@@ -358,7 +426,7 @@ export default function CatalogScreen() {
               {decor.map((item, index) => (
                 <Animated.View
                   key={item.id}
-                  entering={FadeInDown.delay(300 + index * 50).duration(300)}
+                  entering={FadeInDown.delay(180 + index * 30).duration(240)}
                   style={{ width: '48%' }}
                 >
                   <GlassCard style={styles.fishCard} animated={false}>
@@ -379,7 +447,6 @@ export default function CatalogScreen() {
         </ScrollView>
       </SafeAreaView>
 
-      {/* Filter Modal */}
       <Modal
         visible={showFilters}
         onClose={() => setShowFilters(false)}
@@ -387,6 +454,22 @@ export default function CatalogScreen() {
         size="medium"
       >
         <View style={styles.filterContent}>
+          <View style={styles.filterSection}>
+            <Text style={styles.filterSectionTitle}>Water Type</Text>
+            <View style={styles.filterChips}>
+              <Chip
+                label="Freshwater"
+                selected={selectedWaterType.includes('freshwater')}
+                onPress={() => toggleFilter('waterType', 'freshwater')}
+              />
+              <Chip
+                label="Saltwater"
+                selected={selectedWaterType.includes('saltwater')}
+                onPress={() => toggleFilter('waterType', 'saltwater')}
+              />
+            </View>
+          </View>
+
           <View style={styles.filterSection}>
             <Text style={styles.filterSectionTitle}>Temperament</Text>
             <View style={styles.filterChips}>
@@ -430,7 +513,6 @@ export default function CatalogScreen() {
         </View>
       </Modal>
 
-      {/* Compatibility Check Modal */}
       <Modal
         visible={showCompatibilityModal}
         onClose={() => {
@@ -440,20 +522,27 @@ export default function CatalogScreen() {
         title="Compatibility Check"
         size="large"
       >
-        {selectedSpecies && (
+        {selectedSpecies && (() => {
+          const hasImage = (selectedSpecies as any).image_key || (selectedSpecies as any).imageKey;
+          
+          return (
           <View style={styles.compatibilityContent}>
-            {/* Species Header */}
             <View style={styles.compatibilityHeader}>
+                {hasImage ? (
+                  <View style={styles.compatibilityIcon}>
+                    <FishThumb imageKey={(selectedSpecies as any).image_key ?? (selectedSpecies as any).imageKey ?? null} size={72} />
+                  </View>
+                ) : (
               <View style={[styles.compatibilityIcon, { backgroundColor: selectedSpecies.color }]}>
                 <Text style={{ fontSize: 36 }}>🐠</Text>
               </View>
+                )}
               <View style={styles.compatibilityInfo}>
                 <Text style={styles.compatibilityName}>{selectedSpecies.commonName}</Text>
                 <Text style={styles.compatibilityScientific}>{selectedSpecies.scientificName}</Text>
               </View>
             </View>
 
-            {/* Stats */}
             <View style={styles.compatibilityStats}>
               <View style={styles.compatibilityStat}>
                 <Text style={styles.compatibilityStatLabel}>Min Tank</Text>
@@ -469,7 +558,6 @@ export default function CatalogScreen() {
               </View>
             </View>
 
-            {/* Warnings */}
             {compatibilityWarnings.length > 0 ? (
               <View style={styles.warningsContainer}>
                 <View style={styles.warningsHeader}>
@@ -491,13 +579,11 @@ export default function CatalogScreen() {
               </View>
             )}
 
-            {/* Care Notes */}
             <View style={styles.careNotesContainer}>
               <Text style={styles.careNotesTitle}>Care Notes</Text>
               <Text style={styles.careNotesText}>{selectedSpecies.careNotes}</Text>
             </View>
 
-            {/* Actions */}
             <View style={styles.compatibilityActions}>
               {!selectedTank ? (
                 <Text style={styles.noTankText}>Create a tank first to add fish</Text>
@@ -518,7 +604,59 @@ export default function CatalogScreen() {
               )}
             </View>
           </View>
-        )}
+          );
+        })()}
+      </Modal>
+
+      {/* Add To Tank Sheet */}
+      {selectedTank && selectedSpecies && (
+        <AddToTankSheet
+          visible={showAddToTankSheet}
+          onClose={() => {
+            setShowAddToTankSheet(false);
+            setSelectedSpecies(null);
+          }}
+          species={selectedSpecies}
+          tank={selectedTank}
+          onConfirm={handleConfirmAddFish}
+        />
+      )}
+
+      {/* Paywall Modal */}
+      <Modal
+        visible={showPaywall}
+        onClose={() => setShowPaywall(false)}
+        title="Premium Required"
+        size="medium"
+      >
+        <View style={{ gap: 16 }}>
+          <Text style={{ fontSize: 15, color: '#2C3E50', lineHeight: 22 }}>
+            Adding fish to your tank requires a premium subscription. Upgrade now to unlock:
+          </Text>
+          <View style={{ gap: 10 }}>
+            <Text style={{ fontSize: 14, color: '#2C3E50' }}>• Add unlimited fish to your tanks</Text>
+            <Text style={{ fontSize: 14, color: '#2C3E50' }}>• Disease detection with history</Text>
+            <Text style={{ fontSize: 14, color: '#2C3E50' }}>• Advanced water quality tracking</Text>
+            <Text style={{ fontSize: 14, color: '#2C3E50' }}>• Priority support</Text>
+          </View>
+          <View style={{ gap: 10, marginTop: 8 }}>
+            <Button
+              title="Start Free Trial"
+              onPress={() => {
+                setShowPaywall(false);
+                router.push('/onboarding/paywall');
+              }}
+              variant="primary"
+              fullWidth
+            />
+            <Button
+              title="Maybe Later"
+              onPress={() => setShowPaywall(false)}
+              variant="outline"
+              fullWidth
+            />
+          </View>
+        </View>
       </Modal>
     </View>
   );
@@ -623,7 +761,7 @@ const styles = StyleSheet.create({
   scrollContent: {
     padding: 20,
     paddingTop: 8,
-    paddingBottom: 100,
+    paddingBottom: 120,
   },
   mascotHint: {
     flexDirection: 'row',

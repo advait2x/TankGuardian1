@@ -9,6 +9,8 @@ import {
   generateDefaultTasks,
   generateId
 } from '@/data/mockData';
+import { migrateSpeciesSlugs } from '@/utils/speciesSlugMigration';
+import { normalizeSpeciesSlug } from '@/utils/slugifySpecies';
 
 interface AppContextType {
   // Auth State
@@ -17,6 +19,7 @@ interface AppContextType {
   hasCompletedOnboarding: boolean;
   isPremium: boolean;
   hasUsedFreeTrial: boolean;
+  diseaseCheckCount: number;
   
   // User Actions
   login: (email: string, password: string) => Promise<boolean>;
@@ -26,6 +29,7 @@ interface AppContextType {
   updateUser: (updates: Partial<User>) => void;
   setPremium: (value: boolean) => void;
   useFreeTrial: () => void;
+  incrementDiseaseCheck: () => void;
   
   // Tank State & Actions
   tanks: Tank[];
@@ -35,6 +39,7 @@ interface AppContextType {
   updateTank: (tankId: string, updates: Partial<Tank>) => void;
   deleteTank: (tankId: string) => void;
   addFishToTank: (tankId: string, fish: FishInstance) => void;
+  addFishInstances: (tankId: string, speciesId: string, quantity: number) => void;
   removeFishFromTank: (tankId: string, instanceId: string) => void;
   addWaterLog: (tankId: string, log: Omit<WaterLog, 'id'>) => void;
   
@@ -66,6 +71,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [hasCompletedOnboarding, setHasCompletedOnboarding] = useState(false);
   const [isPremium, setIsPremiumState] = useState(false);
   const [hasUsedFreeTrial, setHasUsedFreeTrial] = useState(false);
+  const [diseaseCheckCount, setDiseaseCheckCount] = useState(0);
   const [tanks, setTanks] = useState<Tank[]>([]);
   const [selectedTankId, setSelectedTankId] = useState<string | null>(null);
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -74,9 +80,29 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [threads, setThreads] = useState<MessageThread[]>(sampleThreads);
   const [isLoading, setIsLoading] = useState(false); // MVP: no async loading
 
+  // Run species slug migration on tanks when they first load or change
+  useEffect(() => {
+    if (tanks.length > 0) {
+      try {
+        const migratedTanks = migrateSpeciesSlugs(tanks);
+        
+        // Only update if tanks actually changed
+        if (JSON.stringify(migratedTanks) !== JSON.stringify(tanks)) {
+          setTanks(migratedTanks);
+        }
+      } catch (error) {
+        // Silently fail - don't break app
+        if (__DEV__) {
+          console.warn('[AppContext] Migration failed:', error);
+        }
+      }
+    }
+  }, []); // Run once on mount
+
   // Auth Actions
   const login = async (email: string, password: string): Promise<boolean> => {
     // Mock login - in real app would validate credentials
+    // Simulate fetching user data from backend
     const mockUser: User = {
       id: generateId(),
       handle: email.split('@')[0],
@@ -85,10 +111,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
       isPremium: false,
       role: 'user',
       createdAt: new Date().toISOString(),
+      hasCompletedOnboarding: true, // Existing users have completed onboarding
     };
     
     setCurrentUser(mockUser);
     setIsAuthenticated(true);
+    // Set onboarding state based on user's stored flag
+    setHasCompletedOnboarding(mockUser.hasCompletedOnboarding || false);
     return true;
   };
 
@@ -101,10 +130,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
       isPremium: false,
       role: 'user',
       createdAt: new Date().toISOString(),
+      hasCompletedOnboarding: false, // New users must complete onboarding
     };
 
     setCurrentUser(newUser);
     setIsAuthenticated(true);
+    setHasCompletedOnboarding(false); // New user needs to go through onboarding
     return true;
   };
 
@@ -119,6 +150,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const completeOnboarding = () => {
     setHasCompletedOnboarding(true);
+    // Persist to user object
+    if (currentUser) {
+      const updatedUser = { ...currentUser, hasCompletedOnboarding: true };
+      setCurrentUser(updatedUser);
+    }
   };
 
   const updateUser = (updates: Partial<User>) => {
@@ -138,6 +174,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const useFreeTrial = () => {
     setHasUsedFreeTrial(true);
+  };
+
+  const incrementDiseaseCheck = () => {
+    setDiseaseCheckCount(prev => prev + 1);
   };
 
   // Tank Actions
@@ -181,9 +221,40 @@ export function AppProvider({ children }: { children: ReactNode }) {
   };
 
   const addFishToTank = (tankId: string, fish: FishInstance) => {
+    // Normalize the species slug before storing
+    const normalizedFish = {
+      ...fish,
+      speciesId: normalizeSpeciesSlug(fish.speciesId) || fish.speciesId,
+    };
+    
     const updatedTanks = tanks.map(t => {
       if (t.id === tankId) {
-        return { ...t, fishInstances: [...t.fishInstances, fish] };
+        return { ...t, fishInstances: [...t.fishInstances, normalizedFish] };
+      }
+      return t;
+    });
+    setTanks(updatedTanks);
+  };
+
+  const addFishInstances = (tankId: string, speciesId: string, quantity: number) => {
+    // Normalize the species slug before storing
+    const normalizedSlug = normalizeSpeciesSlug(speciesId) || speciesId;
+    
+    const newInstances: FishInstance[] = [];
+    const now = new Date().toISOString();
+    
+    for (let i = 0; i < quantity; i++) {
+      newInstances.push({
+        instanceId: generateId(),
+        speciesId: normalizedSlug, // Always store normalized slug
+        nickname: '',
+        addedAt: now,
+      });
+    }
+    
+    const updatedTanks = tanks.map(t => {
+      if (t.id === tankId) {
+        return { ...t, fishInstances: [...t.fishInstances, ...newInstances] };
       }
       return t;
     });
@@ -339,6 +410,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         hasCompletedOnboarding,
         isPremium,
         hasUsedFreeTrial,
+        diseaseCheckCount,
         login,
         signup,
         logout,
@@ -346,6 +418,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         updateUser,
         setPremium,
         useFreeTrial,
+        incrementDiseaseCheck,
         tanks,
         selectedTankId,
         selectTank,
@@ -353,6 +426,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         updateTank,
         deleteTank,
         addFishToTank,
+        addFishInstances,
         removeFishFromTank,
         addWaterLog,
         tasks,

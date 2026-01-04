@@ -79,6 +79,13 @@ export default function CreateTankScreen() {
     router.replace('/(tabs)');
   };
 
+  const handleSkip = async () => {
+    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    completeOnboarding();
+    showToast('Welcome to TankGuardian!', 'success');
+    router.replace('/(tabs)');
+  };
+
   return (
     <View style={styles.container}>
       <AnimatedBackground variant="light" />
@@ -93,8 +100,21 @@ export default function CreateTankScreen() {
             <ArrowLeft size={24} color="#2C3E50" />
           </TouchableOpacity>
           <View style={styles.progressBar}>
-            <View style={[styles.progressFill, { width: '100%' }]} />
+            <View style={[styles.progressFill, { width: `${(step / 3) * 100}%` }]} />
           </View>
+        </Animated.View>
+        
+        {/* Prominent Skip Button */}
+        <Animated.View 
+          entering={FadeIn.delay(400).duration(220)}
+          style={styles.skipButtonContainer}
+        >
+          <TouchableOpacity 
+            onPress={handleSkip}
+            style={styles.skipButton}
+          >
+            <Text style={styles.skipButtonText}>I don't have a tank yet - Skip for now</Text>
+          </TouchableOpacity>
         </Animated.View>
 
         <ScrollView 
@@ -106,19 +126,19 @@ export default function CreateTankScreen() {
           {step === 1 && (
             <>
               <Animated.Text 
-                entering={FadeInDown.duration(400)}
+                entering={FadeInDown.duration(220)}
                 style={styles.title}
               >
                 Name your tank
               </Animated.Text>
               <Animated.Text 
-                entering={FadeInDown.delay(100).duration(400)}
+                entering={FadeInDown.delay(100).duration(220)}
                 style={styles.subtitle}
               >
                 What would you like to call your aquarium?
               </Animated.Text>
 
-              <Animated.View entering={FadeInDown.delay(200).duration(400)}>
+              <Animated.View entering={FadeInDown.delay(200).duration(220)}>
                 <Input
                   placeholder="My First Tank"
                   value={tankName}
@@ -128,7 +148,7 @@ export default function CreateTankScreen() {
               </Animated.View>
 
               <Animated.Text 
-                entering={FadeInDown.delay(300).duration(400)}
+                entering={FadeInDown.delay(300).duration(220)}
                 style={[styles.sectionTitle, { marginTop: 24 }]}
               >
                 Tank shape
@@ -141,7 +161,7 @@ export default function CreateTankScreen() {
                   return (
                     <Animated.View
                       key={item.type}
-                      entering={FadeInDown.delay(400 + index * 50).duration(400)}
+                      entering={FadeInDown.delay(400 + index * 50).duration(220)}
                       style={{ width: '48%' }}
                     >
                       <TouchableOpacity
@@ -176,13 +196,13 @@ export default function CreateTankScreen() {
           {step === 2 && (
             <>
               <Animated.Text 
-                entering={FadeInDown.duration(400)}
+                entering={FadeInDown.duration(220)}
                 style={styles.title}
               >
                 Tank size
               </Animated.Text>
               <Animated.Text 
-                entering={FadeInDown.delay(100).duration(400)}
+                entering={FadeInDown.delay(100).duration(220)}
                 style={styles.subtitle}
               >
                 How many gallons does your tank hold?
@@ -194,7 +214,7 @@ export default function CreateTankScreen() {
                   return (
                     <Animated.View
                       key={size}
-                      entering={FadeInDown.delay(200 + index * 30).duration(400)}
+                      entering={FadeInDown.delay(200 + index * 30).duration(220)}
                     >
                       <TouchableOpacity
                         onPress={() => handleSelectSize(size)}
@@ -216,7 +236,7 @@ export default function CreateTankScreen() {
                 })}
               </View>
 
-              <Animated.View entering={FadeInDown.delay(500).duration(400)} style={styles.customSizeContainer}>
+              <Animated.View entering={FadeInDown.delay(500).duration(220)} style={styles.customSizeContainer}>
                 <Text style={styles.orText}>or enter custom size</Text>
                 <View style={styles.customInputRow}>
                   <TextInput
@@ -237,19 +257,19 @@ export default function CreateTankScreen() {
           {step === 3 && (
             <>
               <Animated.Text 
-                entering={FadeInDown.duration(400)}
+                entering={FadeInDown.duration(220)}
                 style={styles.title}
               >
                 Water type
               </Animated.Text>
               <Animated.Text 
-                entering={FadeInDown.delay(100).duration(400)}
+                entering={FadeInDown.delay(100).duration(220)}
                 style={styles.subtitle}
               >
                 What kind of aquarium are you setting up?
               </Animated.Text>
 
-              <Animated.View entering={FadeInDown.delay(200).duration(400)}>
+              <Animated.View entering={FadeInDown.delay(200).duration(220)}>
                 <TouchableOpacity
                   onPress={() => handleSelectWaterType('freshwater')}
                   activeOpacity={0.8}
@@ -277,7 +297,7 @@ export default function CreateTankScreen() {
                 </TouchableOpacity>
               </Animated.View>
 
-              <Animated.View entering={FadeInDown.delay(300).duration(400)}>
+              <Animated.View entering={FadeInDown.delay(300).duration(220)}>
                 <TouchableOpacity
                   onPress={() => handleSelectWaterType('saltwater')}
                   activeOpacity={0.8}
@@ -294,17 +314,19 @@ export default function CreateTankScreen() {
                     </View>
                     <View style={styles.waterTypeInfo}>
                       <Text style={styles.waterTypeName}>Saltwater</Text>
-                      <Text style={styles.waterTypeDesc}>Advanced — Coming soon!</Text>
+                      <Text style={styles.waterTypeDesc}>Marine fish and corals</Text>
                     </View>
-                    <View style={styles.comingSoonBadge}>
-                      <Text style={styles.comingSoonText}>Soon</Text>
-                    </View>
+                    {waterType === 'saltwater' && (
+                      <View style={styles.waterTypeCheck}>
+                        <Check size={20} color="#2196F3" />
+                      </View>
+                    )}
                   </GlassCard>
                 </TouchableOpacity>
               </Animated.View>
 
               {/* Summary */}
-              <Animated.View entering={FadeInDown.delay(400).duration(400)} style={styles.summaryCard}>
+              <Animated.View entering={FadeInDown.delay(400).duration(220)} style={styles.summaryCard}>
                 <Text style={styles.summaryTitle}>Your tank summary</Text>
                 <View style={styles.summaryRow}>
                   <Text style={styles.summaryLabel}>Name</Text>
@@ -329,7 +351,7 @@ export default function CreateTankScreen() {
 
         {/* CTA */}
         <Animated.View 
-          entering={FadeIn.delay(500).duration(400)}
+          entering={FadeIn.delay(500).duration(220)}
           style={styles.ctaContainer}
         >
           {step < 3 ? (
@@ -377,6 +399,26 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255, 255, 255, 0.8)',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  skipButtonContainer: {
+    paddingHorizontal: 24,
+    paddingTop: 8,
+    paddingBottom: 16,
+  },
+  skipButton: {
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    borderRadius: 14,
+    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+    borderWidth: 1,
+    borderColor: 'rgba(100, 116, 139, 0.2)',
+    alignItems: 'center',
+  },
+  skipButtonText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#64748B',
+    textAlign: 'center',
   },
   progressBar: {
     flex: 1,

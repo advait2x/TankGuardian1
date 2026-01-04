@@ -64,6 +64,7 @@ const Bubble = ({ delay, startX, size, duration }: BubbleProps) => {
         },
         animatedStyle,
       ]}
+      pointerEvents="none"
     />
   );
 };
@@ -106,13 +107,13 @@ export default function AnimatedBackground({
   const colors = backgroundColors[variant];
 
   return (
-    <View style={[styles.container, { backgroundColor: colors[0] }]}>
+    <View style={[styles.container, { backgroundColor: colors[0] }]} pointerEvents="none">
       {/* Gradient layers */}
-      <View style={[styles.gradientLayer, { backgroundColor: colors[1], opacity: 0.5 }]} />
-      <View style={[styles.gradientLayer, styles.gradientBottom, { backgroundColor: colors[2], opacity: 0.3 }]} />
+      <View style={[styles.gradientLayer, { backgroundColor: colors[1], opacity: 0.5 }]} pointerEvents="none" />
+      <View style={[styles.gradientLayer, styles.gradientBottom, { backgroundColor: colors[2], opacity: 0.3 }]} pointerEvents="none" />
       
       {/* Noise texture overlay */}
-      <View style={styles.noiseOverlay} />
+      <View style={styles.noiseOverlay} pointerEvents="none" />
       
       {/* Animated bubbles */}
       {showBubbles && bubbles.map((bubble) => (

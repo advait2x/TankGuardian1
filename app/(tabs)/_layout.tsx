@@ -1,9 +1,10 @@
 import React from 'react';
 import { View, StyleSheet, TouchableOpacity } from 'react-native';
 import { Tabs, useRouter } from 'expo-router';
-import { Home, Fish, Grid3X3, Users, Settings, Plus } from 'lucide-react-native';
+import { Home, Grid3X3, Users, Settings, Plus } from 'lucide-react-native';
 import Animated, { useAnimatedStyle, withSpring, useSharedValue } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
+import MascotIcon from '@/components/mascot/MascotIcon';
 
 const AnimatedTouchable = Animated.createAnimatedComponent(TouchableOpacity);
 
@@ -66,7 +67,9 @@ export default function TabsLayout() {
           name="mytank"
           options={{
             title: 'My Tank',
-            tabBarIcon: ({ color, size }: { color: string; size: number }) => <Fish size={size} color={color} />,
+            tabBarIcon: ({ color, size }: { color: string; size: number }) => (
+              <MascotIcon variant="guide" size={size + 4} withHalo={false} />
+            ),
           }}
         />
         <Tabs.Screen

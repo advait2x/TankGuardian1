@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, TextInput, RefreshControl } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -10,7 +10,9 @@ import {
   Plus,
   Send,
   Image as ImageIcon,
-  X
+  X,
+  Search,
+  UserCircle2
 } from 'lucide-react-native';
 import AnimatedBackground from '@/components/ui/AnimatedBackground';
 import GlassCard from '@/components/ui/GlassCard';
@@ -32,11 +34,43 @@ export default function CommunityScreen() {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [newPostText, setNewPostText] = useState('');
   const [likedPosts, setLikedPosts] = useState<Set<string>>(new Set());
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchFocused, setSearchFocused] = useState(false);
 
-  // Combine mock posts with user posts
-  const allPosts = [...posts].sort((a, b) => 
+  // Combine mock posts with user posts, ensuring unique IDs
+  const allPosts = [...posts, ...samplePosts]
+    .filter((post, index, self) => 
+      // Remove duplicates based on ID
+      index === self.findIndex(p => p.id === post.id)
+    )
+    .sort((a, b) => 
     new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
   );
+
+  // Filter posts and users based on search
+  const filteredPosts = useMemo(() => {
+    if (!searchQuery.trim()) return allPosts;
+    
+    const query = searchQuery.toLowerCase();
+    return allPosts.filter(post => {
+      const author = getAuthor(post.authorId);
+      return (
+        post.text.toLowerCase().includes(query) ||
+        author.displayName.toLowerCase().includes(query) ||
+        author.handle.toLowerCase().includes(query)
+      );
+    });
+  }, [searchQuery, allPosts]);
+
+  const filteredUsers = useMemo(() => {
+    if (!searchQuery.trim()) return [];
+    
+    const query = searchQuery.toLowerCase();
+    return sampleUsers.filter(user => 
+      user.displayName.toLowerCase().includes(query) ||
+      user.handle.toLowerCase().includes(query)
+    );
+  }, [searchQuery]);
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -67,6 +101,11 @@ export default function CommunityScreen() {
     setNewPostText('');
     setShowCreateModal(false);
     showToast('Post created!', 'success');
+  };
+
+  const handleUserPress = async (userId: string) => {
+    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    router.push(`/profile/${userId}` as any);
   };
 
   const getAuthor = (authorId: string) => {
@@ -101,7 +140,7 @@ export default function CommunityScreen() {
       
       <SafeAreaView style={styles.safeArea} edges={['top']}>
         {/* Header */}
-        <Animated.View entering={FadeInDown.duration(300)} style={styles.header}>
+        <Animated.View entering={FadeInDown.duration(220)} style={styles.header}>
           <Text style={styles.title}>Community</Text>
           <TouchableOpacity 
             style={styles.createButton}
@@ -109,6 +148,27 @@ export default function CommunityScreen() {
           >
             <Plus size={22} color="#fff" />
           </TouchableOpacity>
+        </Animated.View>
+
+        {/* Search Bar */}
+        <Animated.View entering={FadeInDown.delay(80).duration(220)} style={styles.searchContainer}>
+          <View style={[styles.searchBar, searchFocused && styles.searchBarFocused]}>
+            <Search size={20} color="#64748B" />
+            <TextInput
+              style={styles.searchInput}
+              placeholder="Search posts, users..."
+              placeholderTextColor="#94A3B8"
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              onFocus={() => setSearchFocused(true)}
+              onBlur={() => setSearchFocused(false)}
+            />
+            {searchQuery.length > 0 && (
+              <TouchableOpacity onPress={() => setSearchQuery('')}>
+                <X size={20} color="#64748B" />
+              </TouchableOpacity>
+            )}
+          </View>
         </Animated.View>
 
         <ScrollView
@@ -119,8 +179,42 @@ export default function CommunityScreen() {
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#0D7377" />
           }
         >
+          {/* Show filtered users when searching */}
+          {searchQuery.trim() && filteredUsers.length > 0 && (
+            <Animated.View entering={FadeInDown.delay(80).duration(220)}>
+              <Text style={styles.sectionTitle}>People</Text>
+              {filteredUsers.map((user) => (
+                <TouchableOpacity
+                  key={user.id}
+                  onPress={() => handleUserPress(user.id)}
+                  activeOpacity={0.7}
+                >
+                  <GlassCard style={styles.userResultCard}>
+                    <View style={styles.userResultAvatar}>
+                      <Text style={styles.userResultAvatarText}>
+                        {user.displayName.charAt(0)}
+                      </Text>
+                    </View>
+                    <View style={styles.userResultInfo}>
+                      <View style={styles.userResultNameRow}>
+                        <Text style={styles.userResultName}>{user.displayName}</Text>
+                        {user.role === 'creator' && (
+                          <Badge label="Creator" variant="info" size="small" />
+                        )}
+                      </View>
+                      <Text style={styles.userResultHandle}>@{user.handle}</Text>
+                    </View>
+                    <UserCircle2 size={20} color="#64748B" />
+                  </GlassCard>
+                </TouchableOpacity>
+              ))}
+              <View style={styles.sectionDivider} />
+            </Animated.View>
+          )}
+
           {/* Featured Creators */}
-          <Animated.View entering={FadeInDown.delay(100).duration(400)}>
+          {!searchQuery.trim() && (
+            <Animated.View entering={FadeInDown.delay(80).duration(220)}>
             <Text style={styles.sectionTitle}>Featured Creators</Text>
             <ScrollView 
               horizontal 
@@ -128,7 +222,12 @@ export default function CommunityScreen() {
               contentContainerStyle={styles.creatorsRow}
             >
               {sampleUsers.filter(u => u.role === 'creator').map((creator, index) => (
-                <TouchableOpacity key={creator.id} style={styles.creatorCard}>
+                  <TouchableOpacity 
+                    key={creator.id} 
+                    style={styles.creatorCard}
+                    onPress={() => handleUserPress(creator.id)}
+                    activeOpacity={0.7}
+                  >
                   <View style={styles.creatorAvatar}>
                     <Text style={styles.creatorAvatarText}>
                       {creator.displayName.charAt(0)}
@@ -145,12 +244,23 @@ export default function CommunityScreen() {
               ))}
             </ScrollView>
           </Animated.View>
+          )}
 
           {/* Feed */}
-          <Animated.View entering={FadeInDown.delay(200).duration(400)}>
-            <Text style={styles.sectionTitle}>Latest Posts</Text>
+          <Animated.View entering={FadeInDown.delay(140).duration(220)}>
+            <Text style={styles.sectionTitle}>
+              {searchQuery.trim() ? 'Posts' : 'Latest Posts'}
+            </Text>
             
-            {allPosts.map((post, index) => {
+            {filteredPosts.length === 0 && searchQuery.trim() && (
+              <GlassCard style={styles.emptyState}>
+                <Search size={48} color="#94A3B8" />
+                <Text style={styles.emptyStateText}>No posts found</Text>
+                <Text style={styles.emptyStateSubtext}>Try searching for something else</Text>
+              </GlassCard>
+            )}
+            
+            {filteredPosts.map((post, index) => {
               const author = getAuthor(post.authorId);
               const isLiked = likedPosts.has(post.id);
               
@@ -161,6 +271,10 @@ export default function CommunityScreen() {
                   delay={250 + index * 50}
                 >
                   {/* Post Header */}
+                  <TouchableOpacity
+                    onPress={() => handleUserPress(post.authorId)}
+                    activeOpacity={0.7}
+                  >
                   <View style={styles.postHeader}>
                     <View style={styles.postAvatar}>
                       <Text style={styles.postAvatarText}>
@@ -177,6 +291,7 @@ export default function CommunityScreen() {
                       <Text style={styles.postTime}>{formatTimeAgo(post.createdAt)}</Text>
                     </View>
                   </View>
+                  </TouchableOpacity>
 
                   {/* Post Content */}
                   <Text style={styles.postText}>{post.text}</Text>
@@ -302,6 +417,30 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  searchContainer: {
+    paddingHorizontal: 20,
+    paddingBottom: 12,
+  },
+  searchBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.75)',
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    gap: 10,
+    borderWidth: 2,
+    borderColor: 'transparent',
+  },
+  searchBarFocused: {
+    borderColor: '#0D7377',
+    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 16,
+    color: '#2C3E50',
+  },
   scrollView: {
     flex: 1,
   },
@@ -315,6 +454,64 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#1A252F',
     marginBottom: 12,
+  },
+  sectionDivider: {
+    height: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.05)',
+    marginVertical: 20,
+  },
+  userResultCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 14,
+    marginBottom: 8,
+  },
+  userResultAvatar: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: '#0D7377',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  userResultAvatarText: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#fff',
+  },
+  userResultInfo: {
+    flex: 1,
+  },
+  userResultNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 2,
+  },
+  userResultName: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1A252F',
+  },
+  userResultHandle: {
+    fontSize: 14,
+    color: '#64748B',
+  },
+  emptyState: {
+    alignItems: 'center',
+    padding: 40,
+  },
+  emptyStateText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#2C3E50',
+    marginTop: 12,
+  },
+  emptyStateSubtext: {
+    fontSize: 14,
+    color: '#94A3B8',
+    marginTop: 4,
   },
   creatorsRow: {
     gap: 12,

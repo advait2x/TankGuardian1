@@ -8,6 +8,7 @@ export interface User {
   role: 'user' | 'creator' | 'admin';
   createdAt: string;
   goals?: string[];
+  hasCompletedOnboarding?: boolean;
 }
 
 export interface Subscription {
@@ -48,6 +49,7 @@ export interface FishSpecies {
   scientificName: string;
   adultSizeInches: number;
   minTankGallons: number;
+  waterType: WaterType; // freshwater or saltwater
   temperament: Temperament;
   schooling: boolean;
   recommendedGroupSize: number;
@@ -58,6 +60,7 @@ export interface FishSpecies {
   modelKey: string;
   imageUrl: string;
   color: string;
+  image_key?: string | null; // Supabase Storage key for fish image
 }
 
 export interface FishInstance {

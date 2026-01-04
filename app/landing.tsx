@@ -1,13 +1,14 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, Dimensions, Image } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Animated, { FadeInDown, FadeIn } from 'react-native-reanimated';
-import { Bell, Shield, Search, Users, Fish, Droplets } from 'lucide-react-native';
+import { Bell, Shield, Search, Users, Droplets } from 'lucide-react-native';
 import AnimatedBackground from '@/components/ui/AnimatedBackground';
 import Button from '@/components/ui/Button';
 import GlassCard from '@/components/ui/GlassCard';
-import Mascot from '@/components/ui/Mascot';
+import MascotIcon from '@/components/mascot/MascotIcon';
+import { useMascot } from '@/components/mascot/MascotContext';
 
 const { width } = Dimensions.get('window');
 
@@ -36,6 +37,15 @@ const features = [
 
 export default function LandingScreen() {
   const router = useRouter();
+  const { showMascot, hideMascot } = useMascot();
+
+  useEffect(() => {
+    // Show mascot on landing screen briefly
+    showMascot('guide', 'mid-right', 'Hey! Ready to keep your fish happy?', 2500);
+    return () => {
+      hideMascot();
+    };
+  }, []);
 
   return (
     <View style={styles.container}>
@@ -49,42 +59,30 @@ export default function LandingScreen() {
         >
           {/* Hero Section */}
           <Animated.View 
-            entering={FadeIn.duration(600)}
+            entering={FadeIn.duration(260)}
             style={styles.heroSection}
           >
             <View style={styles.logoContainer}>
               <View style={styles.logoIcon}>
-                <Fish size={32} color="#fff" />
+                <MascotIcon variant="guide" size={44} withHalo={false} />
               </View>
               <Text style={styles.logoText}>TankGuardian</Text>
             </View>
             
             <Animated.Text 
-              entering={FadeInDown.delay(200).duration(500)}
+              entering={FadeInDown.delay(120).duration(240)}
               style={styles.heroTitle}
             >
               Keep fish alive.{'\n'}Prevent disasters.
             </Animated.Text>
             
             <Animated.Text 
-              entering={FadeInDown.delay(400).duration(500)}
+              entering={FadeInDown.delay(200).duration(240)}
               style={styles.heroSubtitle}
             >
               Your pocket aquarium assistant that guides you through setup, reminds you of tasks, and helps diagnose problems.
             </Animated.Text>
             
-            {/* Mascot */}
-            <Animated.View
-              entering={FadeIn.delay(600).duration(800)}
-              style={styles.mascotContainer}
-            >
-              <Mascot 
-                variant="guide" 
-                size="large" 
-                position="center"
-                tipText="Hey! Ready to keep your fish happy?"
-              />
-            </Animated.View>
           </Animated.View>
 
           {/* Features Grid */}

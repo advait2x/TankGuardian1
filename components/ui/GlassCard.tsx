@@ -3,10 +3,10 @@ import { View, StyleSheet, ViewStyle, TouchableOpacity } from 'react-native';
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
-  withSpring,
   withTiming,
   FadeIn,
   FadeInDown,
+  Easing,
 } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 
@@ -18,6 +18,9 @@ interface GlassCardProps {
   animated?: boolean;
   delay?: number;
 }
+
+// Calm press animation config
+const EASE_OUT = Easing.bezier(0.25, 0.1, 0.25, 1);
 
 export default function GlassCard({
   children,
@@ -31,13 +34,13 @@ export default function GlassCard({
   const translateY = useSharedValue(0);
 
   const handlePressIn = () => {
-    scale.value = withSpring(0.98, { damping: 15 });
-    translateY.value = withSpring(2, { damping: 15 });
+    scale.value = withTiming(0.98, { duration: 150, easing: EASE_OUT });
+    translateY.value = withTiming(1, { duration: 150, easing: EASE_OUT });
   };
 
   const handlePressOut = () => {
-    scale.value = withSpring(1, { damping: 15 });
-    translateY.value = withSpring(0, { damping: 15 });
+    scale.value = withTiming(1, { duration: 220, easing: EASE_OUT });
+    translateY.value = withTiming(0, { duration: 220, easing: EASE_OUT });
   };
 
   const handlePress = async () => {
@@ -65,7 +68,7 @@ export default function GlassCard({
   if (onPress) {
     return (
       <Animated.View
-        entering={animated ? FadeInDown.delay(delay).duration(300).springify() : undefined}
+        entering={animated ? FadeInDown.delay(delay).duration(240) : undefined}
         style={animatedStyle}
       >
         <TouchableOpacity
@@ -82,7 +85,7 @@ export default function GlassCard({
 
   return (
     <Animated.View
-      entering={animated ? FadeInDown.delay(delay).duration(300).springify() : undefined}
+      entering={animated ? FadeInDown.delay(delay).duration(240) : undefined}
     >
       {content}
     </Animated.View>

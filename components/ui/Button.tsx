@@ -3,7 +3,8 @@ import { Text, StyleSheet, TouchableOpacity, ActivityIndicator, ViewStyle, TextS
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
-  withSpring,
+  withTiming,
+  Easing,
 } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 
@@ -23,6 +24,9 @@ interface ButtonProps {
 
 const AnimatedTouchable = Animated.createAnimatedComponent(TouchableOpacity);
 
+// Calm, premium button animation config
+const EASE_OUT = Easing.bezier(0.25, 0.1, 0.25, 1);
+
 export default function Button({
   title,
   onPress,
@@ -39,11 +43,11 @@ export default function Button({
   const scale = useSharedValue(1);
 
   const handlePressIn = () => {
-    scale.value = withSpring(0.96, { damping: 15 });
+    scale.value = withTiming(0.98, { duration: 150, easing: EASE_OUT });
   };
 
   const handlePressOut = () => {
-    scale.value = withSpring(1, { damping: 15 });
+    scale.value = withTiming(1, { duration: 220, easing: EASE_OUT });
   };
 
   const handlePress = async () => {

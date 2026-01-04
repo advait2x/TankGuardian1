@@ -1,3 +1,4 @@
+import "../global.css";
 import {
   DefaultTheme,
   ThemeProvider,
@@ -8,10 +9,12 @@ import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
 import { useEffect } from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
+import { SafeAreaProvider } from "react-native-safe-area-context";
 import "react-native-reanimated";
-import "../global.css";
 import { AppProvider } from "@/store/AppContext";
 import { ToastProvider } from "@/components/ui/Toast";
+import { MascotProvider } from "@/components/mascot/MascotContext";
+import { listFishSpecies } from "@/utils/remoteFishCatalog";
 
 // Prevent the splash screen from auto-hiding before asset loading is complete.
 SplashScreen.preventAutoHideAsync();
@@ -36,14 +39,35 @@ export default function RootLayout() {
     }
   }, [loaded]);
 
+  // Dev-only smoke test for Supabase catalog
+  useEffect(() => {
+    if (__DEV__) {
+      // Run async smoke test without blocking render
+      listFishSpecies({ limit: 1 })
+        .then(result => {
+          if (result && result.items.length > 0) {
+            console.log('[Supabase] catalog ok ✓');
+          } else {
+            console.warn('[Supabase] catalog failed (fallback active)');
+          }
+        })
+        .catch(() => {
+          console.warn('[Supabase] catalog failed (fallback active)');
+        });
+    }
+  }, []);
+
   if (!loaded) {
     return null;
   }
+  
 
   return (
+    <SafeAreaProvider>
     <GestureHandlerRootView style={{ flex: 1 }}>
       <AppProvider>
         <ToastProvider>
+            <MascotProvider>
           <ThemeProvider value={CustomTheme}>
             <Stack
               screenOptions={({ route }) => ({
@@ -61,8 +85,10 @@ export default function RootLayout() {
             </Stack>
             <StatusBar style="dark" />
           </ThemeProvider>
+            </MascotProvider>
         </ToastProvider>
       </AppProvider>
     </GestureHandlerRootView>
+    </SafeAreaProvider>
   );
 }

@@ -7,11 +7,21 @@ import Animated, {
   withTiming,
   withDelay,
   runOnJS,
+  Easing,
 } from 'react-native-reanimated';
 import { CheckCircle, AlertCircle, Info, AlertTriangle } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 
 const { width } = Dimensions.get('window');
+
+// Calm toast animation config
+const SPRING_CONFIG = {
+  damping: 30,
+  stiffness: 400,
+  overshootClamping: true,
+};
+
+const EASE_IN_OUT = Easing.bezier(0.4, 0, 0.2, 1);
 
 type ToastType = 'success' | 'error' | 'info' | 'warning';
 
@@ -44,13 +54,13 @@ export default function Toast({
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
       }
 
-      opacity.value = withTiming(1, { duration: 200 });
-      translateY.value = withSpring(0, { damping: 15 });
+      opacity.value = withTiming(1, { duration: 220, easing: EASE_IN_OUT });
+      translateY.value = withSpring(0, SPRING_CONFIG);
 
-      // Auto hide
+      // Auto hide with calm exit
       setTimeout(() => {
-        translateY.value = withTiming(-100, { duration: 250 });
-        opacity.value = withDelay(150, withTiming(0, { duration: 150 }, () => {
+        translateY.value = withTiming(-100, { duration: 220, easing: EASE_IN_OUT });
+        opacity.value = withDelay(100, withTiming(0, { duration: 180 }, () => {
           if (onHide) {
             runOnJS(onHide)();
           }

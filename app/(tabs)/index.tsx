@@ -7,16 +7,19 @@ import {
   AlertTriangle, 
   CheckCircle, 
   Droplets, 
-  Fish as FishIcon,
   ChevronRight,
   Clock,
   TrendingUp,
-  Info
+  Info,
+  Bell,
+  Plus
 } from 'lucide-react-native';
 import AnimatedBackground from '@/components/ui/AnimatedBackground';
 import GlassCard from '@/components/ui/GlassCard';
-import Mascot from '@/components/ui/Mascot';
 import Button from '@/components/ui/Button';
+import MascotIcon from '@/components/mascot/MascotIcon';
+import { useMascot } from '@/components/mascot/MascotContext';
+import { useEffect } from 'react';
 import Badge from '@/components/ui/Badge';
 import ProgressBar from '@/components/ui/ProgressBar';
 import Modal from '@/components/ui/Modal';
@@ -29,6 +32,7 @@ export default function HomeScreen() {
   const router = useRouter();
   const { currentUser, tanks, selectedTankId, tasks, completeTask } = useApp();
   const { showToast } = useToast();
+  const { showMascot, hideMascot } = useMascot();
   const [refreshing, setRefreshing] = useState(false);
   const [showRiskModal, setShowRiskModal] = useState(false);
 
@@ -44,6 +48,18 @@ export default function HomeScreen() {
   const overdueTasks = tankTasks.filter(t => new Date(t.nextDueAt) < new Date());
   const riskScore = Math.min(100, overdueTasks.length * 25);
   const riskLevel = riskScore <= 25 ? 'low' : riskScore <= 50 ? 'medium' : 'high';
+
+  useEffect(() => {
+    // Show mascot on home screen with tasks briefly
+    if (todayTasks.length > 0) {
+      showMascot('checklist', 'bottom-right', 'Tap a task to complete it!', 3000);
+    } else {
+      showMascot('guide', 'bottom-right', undefined, 2500);
+    }
+    return () => {
+      hideMascot();
+    };
+  }, [todayTasks.length]);
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -78,13 +94,12 @@ export default function HomeScreen() {
           }
         >
           {/* Header */}
-          <Animated.View entering={FadeInDown.duration(400)} style={styles.header}>
+          <Animated.View entering={FadeInDown.duration(220)} style={styles.header}>
             <View>
               <Text style={styles.greeting}>{getGreeting()}</Text>
               <Text style={styles.userName}>{currentUser?.displayName || 'Aquarist'} 👋</Text>
             </View>
             <View style={styles.tankSelector}>
-              <FishIcon size={16} color="#0D7377" />
               <Text style={styles.tankName}>{selectedTank?.name || 'No tank'}</Text>
             </View>
           </Animated.View>
@@ -125,7 +140,7 @@ export default function HomeScreen() {
           )}
 
           {/* Today's Tasks */}
-          <Animated.View entering={FadeInDown.delay(200).duration(400)}>
+          <Animated.View entering={FadeInDown.delay(100).duration(220)}>
             <View style={styles.sectionHeader}>
               <Text style={styles.sectionTitle}>Today's Tasks</Text>
               <TouchableOpacity onPress={() => router.push('/(tabs)/mytank')}>
@@ -136,8 +151,7 @@ export default function HomeScreen() {
             {todayTasks.length === 0 ? (
               <GlassCard style={styles.emptyCard}>
                 <View style={styles.emptyContent}>
-                  <Mascot variant="checklist" size="small" animate={false} />
-                  <Text style={styles.emptyTitle}>All caught up!</Text>
+                  <Text style={styles.emptyTitle}>All caught up! 🎉</Text>
                   <Text style={styles.emptyText}>No tasks due today. Your fish are happy.</Text>
                 </View>
               </GlassCard>
@@ -173,7 +187,7 @@ export default function HomeScreen() {
           </Animated.View>
 
           {/* Suggested Actions */}
-          <Animated.View entering={FadeInDown.delay(350).duration(400)}>
+          <Animated.View entering={FadeInDown.delay(180).duration(220)}>
             <Text style={styles.sectionTitle}>Suggested Actions</Text>
             <ScrollView 
               horizontal 
@@ -190,7 +204,7 @@ export default function HomeScreen() {
 
               <GlassCard style={styles.actionCard} onPress={() => router.push('/(tabs)/catalog')}>
                 <View style={[styles.actionIcon, { backgroundColor: 'rgba(255, 107, 53, 0.2)' }]}>
-                  <FishIcon size={24} color="#FF6B35" />
+                  <MascotIcon variant="search" size={64} />
                 </View>
                 <Text style={styles.actionTitle}>Add Fish</Text>
                 <Text style={styles.actionSubtitle}>Browse compatible species</Text>
@@ -207,7 +221,7 @@ export default function HomeScreen() {
           </Animated.View>
 
           {/* Community Preview */}
-          <Animated.View entering={FadeInDown.delay(450).duration(400)}>
+          <Animated.View entering={FadeInDown.delay(240).duration(220)}>
             <View style={styles.sectionHeader}>
               <Text style={styles.sectionTitle}>From the Community</Text>
               <TouchableOpacity onPress={() => router.push('/(tabs)/community')}>
@@ -249,19 +263,6 @@ export default function HomeScreen() {
 
           <View style={styles.bottomPadding} />
         </ScrollView>
-
-        {/* Mascot - positioned as overlay */}
-        <Animated.View 
-          entering={FadeIn.delay(800).duration(600)}
-          style={styles.mascotContainer}
-        >
-          <Mascot 
-            variant="checklist" 
-            size="small"
-            position="right"
-            tipText="Tap a task to complete it!"
-          />
-        </Animated.View>
       </SafeAreaView>
 
       {/* Risk Modal */}
@@ -299,15 +300,15 @@ export default function HomeScreen() {
 function getTaskIcon(type: string) {
   switch (type) {
     case 'feed':
-      return <FishIcon size={20} color="#FF6B35" />;
+      return <MascotIcon variant="checklist" size={56} withHalo={false} />;
     case 'water_change':
-      return <Droplets size={20} color="#4ECDC4" />;
+      return <Droplets size={32} color="#4ECDC4" />;
     case 'test':
-      return <TrendingUp size={20} color="#0D7377" />;
+      return <TrendingUp size={32} color="#0D7377" />;
     case 'maintenance':
-      return <AlertTriangle size={20} color="#FFA726" />;
+      return <AlertTriangle size={32} color="#FFA726" />;
     default:
-      return <CheckCircle size={20} color="#0D7377" />;
+      return <CheckCircle size={32} color="#0D7377" />;
   }
 }
 

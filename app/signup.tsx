@@ -3,10 +3,11 @@ import { View, Text, StyleSheet, ScrollView, TouchableOpacity, KeyboardAvoidingV
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Animated, { FadeInDown } from 'react-native-reanimated';
-import { ArrowLeft, Mail, Lock, User, Fish } from 'lucide-react-native';
+import { ArrowLeft, Mail, Lock, User } from 'lucide-react-native';
 import AnimatedBackground from '@/components/ui/AnimatedBackground';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
+import MascotIcon from '@/components/mascot/MascotIcon';
 import { useApp } from '@/store/AppContext';
 import { useToast } from '@/components/ui/Toast';
 
@@ -101,23 +102,23 @@ export default function SignupScreen() {
           >
             {/* Logo */}
             <Animated.View 
-              entering={FadeInDown.delay(100).duration(400)}
+              entering={FadeInDown.delay(100).duration(220)}
               style={styles.logoContainer}
             >
               <View style={styles.logoIcon}>
-                <Fish size={32} color="#fff" />
+                <MascotIcon variant="guide" size={44} withHalo={false} />
               </View>
             </Animated.View>
 
             {/* Title */}
             <Animated.Text 
-              entering={FadeInDown.delay(200).duration(400)}
+              entering={FadeInDown.delay(200).duration(220)}
               style={styles.title}
             >
               Create account
             </Animated.Text>
             <Animated.Text 
-              entering={FadeInDown.delay(300).duration(400)}
+              entering={FadeInDown.delay(300).duration(220)}
               style={styles.subtitle}
             >
               Start your journey to healthier fish
@@ -125,7 +126,7 @@ export default function SignupScreen() {
 
             {/* Form */}
             <Animated.View 
-              entering={FadeInDown.delay(400).duration(400)}
+              entering={FadeInDown.delay(400).duration(220)}
               style={styles.form}
             >
               <Input
@@ -172,7 +173,7 @@ export default function SignupScreen() {
 
             {/* Actions */}
             <Animated.View 
-              entering={FadeInDown.delay(500).duration(400)}
+              entering={FadeInDown.delay(500).duration(220)}
               style={styles.actions}
             >
               <Button

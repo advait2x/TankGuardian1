@@ -5,12 +5,23 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import Animated, { FadeInDown, FadeIn } from 'react-native-reanimated';
 import AnimatedBackground from '@/components/ui/AnimatedBackground';
 import Button from '@/components/ui/Button';
-import Mascot from '@/components/ui/Mascot';
+import MascotIcon from '@/components/mascot/MascotIcon';
 import { useApp } from '@/store/AppContext';
+import { useMascot } from '@/components/mascot/MascotContext';
+import { useEffect } from 'react';
 
 export default function OnboardingWelcomeScreen() {
   const router = useRouter();
   const { currentUser } = useApp();
+  const { showMascot, hideMascot } = useMascot();
+
+  useEffect(() => {
+    // Show guide mascot on onboarding welcome
+    showMascot('guide', 'top-right', "I'm so excited to help you!", 3000);
+    return () => {
+      hideMascot();
+    };
+  }, []);
 
   return (
     <View style={styles.container}>
@@ -20,34 +31,32 @@ export default function OnboardingWelcomeScreen() {
         <View style={styles.content}>
           {/* Mascot */}
           <Animated.View
-            entering={FadeIn.delay(300).duration(800)}
+            entering={FadeIn.delay(100).duration(260)}
             style={styles.mascotContainer}
           >
-            <Mascot 
+            <MascotIcon 
               variant="guide" 
-              size="large" 
-              position="center"
-              tipText="I'm so excited to help you!"
+              size={120}
             />
           </Animated.View>
 
           {/* Welcome Text */}
           <Animated.Text 
-            entering={FadeInDown.delay(500).duration(500)}
+            entering={FadeInDown.delay(180).duration(240)}
             style={styles.welcomeText}
           >
             Hey {currentUser?.displayName || 'there'}! 👋
           </Animated.Text>
           
           <Animated.Text 
-            entering={FadeInDown.delay(700).duration(500)}
+            entering={FadeInDown.delay(240).duration(240)}
             style={styles.title}
           >
             Welcome to{'\n'}TankGuardian
           </Animated.Text>
           
           <Animated.Text 
-            entering={FadeInDown.delay(900).duration(500)}
+            entering={FadeInDown.delay(300).duration(240)}
             style={styles.subtitle}
           >
             I'll be your personal aquarium assistant. Let me help you set up your tank and keep your fish healthy and happy!
@@ -55,7 +64,7 @@ export default function OnboardingWelcomeScreen() {
 
           {/* Features Preview */}
           <Animated.View 
-            entering={FadeInDown.delay(1100).duration(500)}
+            entering={FadeInDown.delay(360).duration(240)}
             style={styles.featuresPreview}
           >
             <View style={styles.featureItem}>
@@ -74,7 +83,7 @@ export default function OnboardingWelcomeScreen() {
 
           {/* CTA */}
           <Animated.View 
-            entering={FadeInDown.delay(1300).duration(500)}
+            entering={FadeInDown.delay(420).duration(240)}
             style={styles.ctaContainer}
           >
             <Button
