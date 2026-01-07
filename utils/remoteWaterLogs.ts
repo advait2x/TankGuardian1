@@ -21,24 +21,20 @@ function isValidUUID(str: string): boolean {
 export interface RemoteWaterLog {
   id: string;
   tank_id: string;
-  owner_id?: string | null;
-  device_id: string;
+  user_id: string;
   ph?: number | null;
-  temp_f?: number | null;
+  temperature?: number | null;  // Database column: temperature (stores Fahrenheit consistently)
   ammonia_ppm?: number | null;
   nitrite_ppm?: number | null;
   nitrate_ppm?: number | null;
-  salinity_sg?: number | null;
   notes?: string | null;
   created_at: string;
 }
 
 export interface CreateWaterLogParams {
   tankId: string;
-  ownerId?: string | null;
-  deviceId: string;
   ph?: number | null;
-  tempF?: number | null;
+  temperature?: number | null;  // Temperature in Fahrenheit
   ammonia?: number | null;
   nitrite?: number | null;
   nitrate?: number | null;
@@ -55,14 +51,14 @@ export interface CreateWaterLogResult {
 
 export interface ListWaterLogsParams {
   tankId: string;
-  ownerId?: string | null;
-  deviceId?: string;
   limit?: number;
+  fromDate?: string;  // ISO date string - filter logs from this date onwards
 }
 
 /**
  * Create a new water parameter log
- * Validates tankId as UUID and properly assigns owner_id/device_id
+ * REQUIRES authenticated session - user_id is NOT NULL in database
+ * Database columns: id, user_id, tank_id, ph, temperature, ammonia_ppm, nitrite_ppm, nitrate_ppm, notes, created_at
  */
 export async function createWaterLog(params: CreateWaterLogParams): Promise<CreateWaterLogResult> {
   if (!isSupabaseConfigured()) {
@@ -70,72 +66,92 @@ export async function createWaterLog(params: CreateWaterLogParams): Promise<Crea
     return { error: { message: 'Supabase not configured', code: 'NO_CONFIG' } };
   }
 
-  // Validate tankId is a valid UUID
-  if (!isValidUUID(params.tankId)) {
-    console.error('[WaterLog] Invalid tankId (not a UUID):', params.tankId);
-    return { 
-      error: { 
-        message: `Invalid tank ID format. Expected UUID, got: ${params.tankId}`,
-        code: 'INVALID_UUID'
-      } 
+  // REQUIRE authenticated session
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session?.user) {
+    console.error('[WaterLog] No active session - user must be authenticated');
+    return {
+      error: {
+        message: 'Please sign in to save water logs',
+        code: 'NO_SESSION'
+      }
     };
   }
 
-  // Validate ownerId is UUID if provided
-  if (params.ownerId && !isValidUUID(params.ownerId)) {
-    console.error('[WaterLog] Invalid ownerId (not a UUID):', params.ownerId);
+  // Validate tankId is a valid UUID
+  if (!params.tankId || !isValidUUID(params.tankId)) {
+    console.error('[WaterLog] Invalid or missing tankId:', params.tankId);
     return { 
       error: { 
-        message: `Invalid owner ID format. Expected UUID, got: ${params.ownerId}`,
-        code: 'INVALID_UUID'
+        message: 'Invalid tank ID. Please select a valid tank.',
+        code: 'INVALID_TANK_ID'
       } 
     };
   }
 
   try {
+    // Map to exact database column names
+    // Database schema: id, user_id, tank_id, ph, temperature, ammonia_ppm, nitrite_ppm, nitrate_ppm, notes, created_at
     const insertData = {
       tank_id: params.tankId,
-      owner_id: params.ownerId || null,
-      device_id: params.deviceId,
-      ph: params.ph,
-      temp_f: params.tempF,
-      ammonia_ppm: params.ammonia,
-      nitrite_ppm: params.nitrite,
-      nitrate_ppm: params.nitrate,
-      notes: params.notes,
+      ph: params.ph ?? null,
+      temperature: params.temperature ?? null,
+      ammonia_ppm: params.ammonia ?? null,
+      nitrite_ppm: params.nitrite ?? null,
+      nitrate_ppm: params.nitrate ?? null,
+      notes: params.notes ?? null,
     };
 
-    console.log('[WaterLog] Inserting:', insertData);
+    // Debug logging in dev mode
+    if (__DEV__) {
+      console.log('[WaterLog] Inserting with fields:', Object.keys(insertData));
+      console.log('[WaterLog] Session user ID:', session.user.id);
+    }
 
     const { data, error } = await supabase
       .from('water_logs')
       .insert(insertData)
-      .select()
+      .select('*')
       .single();
 
-    // Debug logging
-    console.log('[WaterLog] insert result', { data, error });
-
     if (error) {
-      console.error('[WaterLog] Supabase insert error:', error.message, error.code);
-      warnOnce('createWaterLog-error', `[WaterLogs] createWaterLog error: ${error.message}`);
-      return { error: { message: error.message, code: error.code } };
+      console.error('[WaterLog] Supabase insert error:', {
+        code: error.code,
+        message: error.message,
+        details: error.details,
+        hint: error.hint,
+      });
+      
+      return { 
+        error: { 
+          message: error.message || 'Failed to save water log', 
+          code: error.code || 'SUPABASE_ERROR'
+        } 
+      };
+    }
+
+    if (__DEV__) {
+      console.log('[WaterLog] Insert successful, ID:', data?.id);
     }
 
     return { data };
   } catch (err) {
-    console.error('[WaterLog] createWaterLog exception:', err);
-    warnOnce('createWaterLog-catch', `[WaterLogs] createWaterLog exception: ${err}`);
-    return { error: { message: String(err), code: 'EXCEPTION' } };
+    console.error('[WaterLog] Exception during insert:', err);
+    return { 
+      error: { 
+        message: err instanceof Error ? err.message : 'Unexpected error saving water log', 
+        code: 'EXCEPTION' 
+      } 
+    };
   }
 }
 
 /**
  * List water logs for a tank
- * Filters by tank_id and either owner_id (if provided) or device_id
+ * Supports optional date filtering for trends/charts
  */
 export async function listWaterLogs(params: ListWaterLogsParams): Promise<RemoteWaterLog[]> {
-  const { tankId, ownerId, deviceId, limit = 50 } = params;
+  const { tankId, limit = 50, fromDate } = params;
 
   if (!isSupabaseConfigured()) {
     return [];
@@ -153,23 +169,13 @@ export async function listWaterLogs(params: ListWaterLogsParams): Promise<Remote
       .select('*')
       .eq('tank_id', tankId);
 
-    // If ownerId exists, filter by owner_id; otherwise filter by device_id
-    if (ownerId) {
-      if (!isValidUUID(ownerId)) {
-        console.warn('[WaterLog] listWaterLogs called with invalid ownerId:', ownerId);
-        return [];
-      }
-      query = query.eq('owner_id', ownerId);
-    } else if (deviceId) {
-      query = query.eq('device_id', deviceId);
-    } else {
-      // Need either ownerId or deviceId to filter properly
-      console.warn('[WaterLog] listWaterLogs called without ownerId or deviceId');
-      return [];
+    // Add date filter if provided
+    if (fromDate) {
+      query = query.gte('created_at', fromDate);
     }
 
     const { data, error } = await query
-      .order('created_at', { ascending: false })
+      .order('created_at', { ascending: true })  // ASC for trend charts
       .limit(limit);
 
     if (error) {
@@ -189,9 +195,7 @@ export async function listWaterLogs(params: ListWaterLogsParams): Promise<Remote
  * Returns null if no logs or on error
  */
 export async function getLatestWaterLog(params: { 
-  tankId: string; 
-  ownerId?: string | null;
-  deviceId?: string;
+  tankId: string;
 }): Promise<RemoteWaterLog | null> {
   if (!isSupabaseConfigured()) {
     return null;
@@ -203,22 +207,10 @@ export async function getLatestWaterLog(params: {
   }
 
   try {
-    let query = supabase
+    const { data, error } = await supabase
       .from('water_logs')
       .select('*')
-      .eq('tank_id', params.tankId);
-
-    if (params.ownerId) {
-      if (!isValidUUID(params.ownerId)) {
-        console.warn('[WaterLog] getLatestWaterLog called with invalid ownerId:', params.ownerId);
-        return null;
-      }
-      query = query.eq('owner_id', params.ownerId);
-    } else if (params.deviceId) {
-      query = query.eq('device_id', params.deviceId);
-    }
-
-    const { data, error } = await query
+      .eq('tank_id', params.tankId)
       .order('created_at', { ascending: false })
       .limit(1)
       .maybeSingle();

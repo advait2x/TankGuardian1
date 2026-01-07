@@ -14,7 +14,7 @@ function mapRemoteToLocal(remote: RemoteWaterLog): WaterLog {
     ammonia: remote.ammonia_ppm ?? 0,
     nitrite: remote.nitrite_ppm ?? 0,
     nitrate: remote.nitrate_ppm ?? 0,
-    temp: remote.temp_f ?? 0,
+    temp: remote.temperature ?? 0,  // Database uses temperature column
     notes: remote.notes ?? '',
   };
 }
@@ -30,18 +30,18 @@ function parseNumeric(value?: string): number | null {
 
 /**
  * Save water parameter log to Supabase
+ * Accepts either string values (from form inputs) or number values (pre-parsed)
  * Returns { ok: boolean, reason?: string, errorMessage?: string, errorCode?: string, data?: WaterLog }
  */
 export async function saveWaterLog(
   tankId: string,
-  ownerId: string | null,
   values: {
-    ph?: string;
-    temp?: string;
-    ammonia?: string;
-    nitrite?: string;
-    nitrate?: string;
-    notes?: string;
+    ph?: string | number | null;
+    temperature?: string | number | null;
+    ammonia?: string | number | null;
+    nitrite?: string | number | null;
+    nitrate?: string | number | null;
+    notes?: string | null;
   }
 ): Promise<{ ok: boolean; reason?: string; errorMessage?: string; errorCode?: string; data?: WaterLog }> {
   // If remote logging disabled, return failure
@@ -50,24 +50,30 @@ export async function saveWaterLog(
   }
 
   try {
-    const deviceId = getDeviceId();
+    if (__DEV__) {
+      console.log('[WaterLogsAdapter] saveWaterLog called with tankId:', tankId);
+    }
 
-    console.log('[WaterLogsAdapter] saveWaterLog called with:', {
-      tankId,
-      ownerId,
-      deviceId,
-      values,
-    });
+    // Helper to convert value to number or null
+    const toNumber = (val?: string | number | null): number | null => {
+      if (val === null || val === undefined) return null;
+      if (typeof val === 'number') return val;
+      if (typeof val === 'string') {
+        const trimmed = val.trim();
+        if (trimmed === '') return null;
+        const parsed = Number(trimmed);
+        return isNaN(parsed) ? null : parsed;
+      }
+      return null;
+    };
 
     const result = await createWaterLog({
       tankId,
-      ownerId: ownerId || null,
-      deviceId,
-      ph: parseNumeric(values.ph),
-      tempF: parseNumeric(values.temp),
-      ammonia: parseNumeric(values.ammonia),
-      nitrite: parseNumeric(values.nitrite),
-      nitrate: parseNumeric(values.nitrate),
+      ph: toNumber(values.ph),
+      temperature: toNumber(values.temperature),
+      ammonia: toNumber(values.ammonia),
+      nitrite: toNumber(values.nitrite),
+      nitrate: toNumber(values.nitrate),
       notes: values.notes?.trim() || null,
     });
 
@@ -100,8 +106,7 @@ export async function saveWaterLog(
  * Returns empty array on error (never throws)
  */
 export async function fetchWaterLogs(
-  tankId: string, 
-  ownerId: string | null,
+  tankId: string,
   limit: number = 30
 ): Promise<WaterLog[]> {
   // If remote logging disabled, return empty array
@@ -110,12 +115,8 @@ export async function fetchWaterLogs(
   }
 
   try {
-    const deviceId = getDeviceId();
-
     const remoteLogs = await listWaterLogs({ 
-      tankId, 
-      ownerId: ownerId || undefined,
-      deviceId: ownerId ? undefined : deviceId,
+      tankId,
       limit 
     });
 
@@ -131,20 +132,15 @@ export async function fetchWaterLogs(
  * Returns null on error or if no logs exist
  */
 export async function getLatestLog(
-  tankId: string,
-  ownerId: string | null
+  tankId: string
 ): Promise<WaterLog | null> {
   if (!USE_REMOTE_CATALOG) {
     return null;
   }
 
   try {
-    const deviceId = getDeviceId();
-
     const remote = await getLatestWaterLog({ 
-      tankId,
-      ownerId: ownerId || undefined,
-      deviceId: ownerId ? undefined : deviceId,
+      tankId
     });
 
     if (remote) {

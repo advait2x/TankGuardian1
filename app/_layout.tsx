@@ -12,6 +12,7 @@ import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import "react-native-reanimated";
 import { AppProvider } from "@/store/AppContext";
+import { AuthProvider } from "@/store/AuthContext";
 import { ToastProvider } from "@/components/ui/Toast";
 import { MascotProvider } from "@/components/mascot/MascotContext";
 import { listFishSpecies } from "@/utils/remoteFishCatalog";
@@ -65,29 +66,32 @@ export default function RootLayout() {
   return (
     <SafeAreaProvider>
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <AppProvider>
-        <ToastProvider>
-            <MascotProvider>
-          <ThemeProvider value={CustomTheme}>
-            <Stack
-              screenOptions={({ route }) => ({
-                headerShown: false,
-                animation: 'slide_from_right',
-                contentStyle: { backgroundColor: '#E8F4F8' },
-              })}
-            >
-              <Stack.Screen name="index" />
-              <Stack.Screen name="landing" />
-              <Stack.Screen name="login" />
-              <Stack.Screen name="signup" />
-              <Stack.Screen name="onboarding" options={{ gestureEnabled: false }} />
-              <Stack.Screen name="(tabs)" options={{ gestureEnabled: false }} />
-            </Stack>
-            <StatusBar style="dark" />
-          </ThemeProvider>
-            </MascotProvider>
-        </ToastProvider>
-      </AppProvider>
+      <AuthProvider>
+        <AppProvider>
+          <ToastProvider>
+              <MascotProvider>
+            <ThemeProvider value={CustomTheme}>
+              <Stack
+                screenOptions={({ route }) => ({
+                  headerShown: false,
+                  animation: 'slide_from_right',
+                  contentStyle: { backgroundColor: '#E8F4F8' },
+                })}
+              >
+                <Stack.Screen name="index" />
+                <Stack.Screen name="landing" />
+                <Stack.Screen name="login" />
+                <Stack.Screen name="signup" />
+                <Stack.Screen name="auth-otp" />
+                <Stack.Screen name="onboarding" options={{ gestureEnabled: false }} />
+                <Stack.Screen name="(tabs)" options={{ gestureEnabled: false }} />
+              </Stack>
+              <StatusBar style="dark" />
+            </ThemeProvider>
+              </MascotProvider>
+          </ToastProvider>
+        </AppProvider>
+      </AuthProvider>
     </GestureHandlerRootView>
     </SafeAreaProvider>
   );

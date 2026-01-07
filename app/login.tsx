@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, KeyboardAvoidingView, Platform } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -9,16 +9,37 @@ import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 import MascotIcon from '@/components/mascot/MascotIcon';
 import { useApp } from '@/store/AppContext';
+import { useAuth } from '@/store/AuthContext';
 import { useToast } from '@/components/ui/Toast';
+import { supabase } from '@/utils/supabase';
 
 export default function LoginScreen() {
   const router = useRouter();
-  const { login, hasCompletedOnboarding } = useApp();
+  const { hasCompletedOnboarding } = useApp();
+  const { session } = useAuth();
   const { showToast } = useToast();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [errors, setErrors] = useState<{ email?: string; password?: string }>({});
+  const hasNavigatedRef = useRef(false);
+
+  // Watch for session changes and navigate when user is authenticated
+  useEffect(() => {
+    if (session && !hasNavigatedRef.current) {
+      hasNavigatedRef.current = true;
+      console.log('[Login] Session detected, navigating to:', hasCompletedOnboarding ? '/(tabs)' : '/onboarding');
+      
+      // Small delay to ensure state is settled
+      setTimeout(() => {
+        if (hasCompletedOnboarding) {
+          router.replace('/(tabs)');
+        } else {
+          router.replace('/onboarding');
+        }
+      }, 100);
+    }
+  }, [session, hasCompletedOnboarding, router]);
 
   const validate = () => {
     const newErrors: typeof errors = {};
@@ -44,16 +65,22 @@ export default function LoginScreen() {
     
     setIsLoading(true);
     try {
-      const success = await login(email, password);
-      if (success) {
-        showToast('Welcome back!', 'success');
-        if (hasCompletedOnboarding) {
-          router.replace('/(tabs)');
-        } else {
-          router.replace('/onboarding');
-        }
+      // Authenticate with Supabase
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: email.trim(),
+        password: password,
+      });
+
+      if (error) {
+        showToast(error.message || 'Login failed. Please try again.', 'error');
+        return;
       }
+
+      console.log('[Login] Sign in successful, user:', data.user?.id);
+      showToast('Welcome back!', 'success');
+      // Navigation will happen via the useEffect watching session
     } catch (error) {
+      console.error('[Login] Exception:', error);
       showToast('Login failed. Please try again.', 'error');
     } finally {
       setIsLoading(false);

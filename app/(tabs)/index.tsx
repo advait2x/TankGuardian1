@@ -25,7 +25,6 @@ import ProgressBar from '@/components/ui/ProgressBar';
 import Modal from '@/components/ui/Modal';
 import { useApp } from '@/store/AppContext';
 import { useToast } from '@/components/ui/Toast';
-import { samplePosts, sampleUsers } from '@/data/mockData';
 import * as Haptics from 'expo-haptics';
 
 export default function HomeScreen() {
@@ -218,47 +217,6 @@ export default function HomeScreen() {
                 <Text style={styles.actionSubtitle}>Browse community tanks</Text>
               </GlassCard>
             </ScrollView>
-          </Animated.View>
-
-          {/* Community Preview */}
-          <Animated.View entering={FadeInDown.delay(240).duration(220)}>
-            <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>From the Community</Text>
-              <TouchableOpacity onPress={() => router.push('/(tabs)/community')}>
-                <Text style={styles.seeAll}>See all</Text>
-              </TouchableOpacity>
-            </View>
-
-            {samplePosts.slice(0, 2).map((post, index) => {
-              const author = sampleUsers.find(u => u.id === post.authorId);
-              return (
-                <GlassCard 
-                  key={post.id} 
-                  style={styles.postCard} 
-                  delay={500 + index * 50}
-                  onPress={() => router.push('/(tabs)/community')}
-                >
-                  <View style={styles.postHeader}>
-                    <View style={styles.postAvatar}>
-                      <Text style={styles.postAvatarText}>
-                        {author?.displayName.charAt(0) || '?'}
-                      </Text>
-                    </View>
-                    <View style={styles.postAuthorInfo}>
-                      <Text style={styles.postAuthorName}>{author?.displayName}</Text>
-                      <Text style={styles.postTime}>
-                        {new Date(post.createdAt).toLocaleDateString()}
-                      </Text>
-                    </View>
-                  </View>
-                  <Text style={styles.postText} numberOfLines={2}>{post.text}</Text>
-                  <View style={styles.postStats}>
-                    <Text style={styles.postStat}>❤️ {post.likesCount}</Text>
-                    <Text style={styles.postStat}>💬 {post.commentsCount}</Text>
-                  </View>
-                </GlassCard>
-              );
-            })}
           </Animated.View>
 
           <View style={styles.bottomPadding} />

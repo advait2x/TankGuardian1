@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, KeyboardAvoidingView, Platform } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -9,11 +9,14 @@ import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 import MascotIcon from '@/components/mascot/MascotIcon';
 import { useApp } from '@/store/AppContext';
+import { useAuth } from '@/store/AuthContext';
 import { useToast } from '@/components/ui/Toast';
+import { supabase } from '@/utils/supabase';
 
 export default function SignupScreen() {
   const router = useRouter();
   const { signup } = useApp();
+  const { session } = useAuth();
   const { showToast } = useToast();
   const [displayName, setDisplayName] = useState('');
   const [email, setEmail] = useState('');
@@ -26,6 +29,20 @@ export default function SignupScreen() {
     password?: string;
     confirmPassword?: string;
   }>({});
+  const hasNavigatedRef = useRef(false);
+
+  // Watch for session changes and navigate to onboarding when user is authenticated
+  useEffect(() => {
+    if (session && !hasNavigatedRef.current) {
+      hasNavigatedRef.current = true;
+      console.log('[Signup] Session detected, navigating to onboarding');
+      
+      // Small delay to ensure state is settled
+      setTimeout(() => {
+        router.replace('/onboarding');
+      }, 100);
+    }
+  }, [session, router]);
 
   const validate = () => {
     const newErrors: typeof errors = {};
@@ -63,12 +80,27 @@ export default function SignupScreen() {
     
     setIsLoading(true);
     try {
-      const success = await signup(email, password, displayName);
-      if (success) {
-        showToast('Account created! Let\'s set up your tank.', 'success');
-        router.replace('/onboarding');
+      // Sign up with Supabase
+      const { data, error } = await supabase.auth.signUp({
+        email: email.trim(),
+        password: password,
+        options: {
+          data: {
+            display_name: displayName,
+          },
+        },
+      });
+
+      if (error) {
+        showToast(error.message || 'Signup failed. Please try again.', 'error');
+        return;
       }
+
+      console.log('[Signup] Sign up successful, user:', data.user?.id);
+      showToast('Account created! Let\'s set up your tank.', 'success');
+      // Navigation will happen via the useEffect watching session
     } catch (error) {
+      console.error('[Signup] Exception:', error);
       showToast('Signup failed. Please try again.', 'error');
     } finally {
       setIsLoading(false);

@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, StyleSheet, TouchableOpacity } from 'react-native';
 import { Tabs, useRouter } from 'expo-router';
-import { Home, Grid3X3, Users, Settings, Plus } from 'lucide-react-native';
+import { Home, Grid3X3, Users, Settings, Plus, Layers } from 'lucide-react-native';
 import Animated, { useAnimatedStyle, withSpring, useSharedValue } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 import MascotIcon from '@/components/mascot/MascotIcon';
@@ -54,6 +54,7 @@ export default function TabsLayout() {
           tabBarInactiveTintColor: '#94A3B8',
           tabBarShowLabel: true,
           tabBarLabelStyle: styles.tabBarLabel,
+          tabBarLabelPosition: 'below-icon',
         }}
       >
         <Tabs.Screen
@@ -77,6 +78,13 @@ export default function TabsLayout() {
           options={{
             title: 'Catalog',
             tabBarIcon: ({ color, size }: { color: string; size: number }) => <Grid3X3 size={size} color={color} />,
+          }}
+        />
+        <Tabs.Screen
+          name="aquascape"
+          options={{
+            title: 'Scape',
+            tabBarIcon: ({ color, size }: { color: string; size: number }) => <Layers size={size} color={color} />,
           }}
         />
         <Tabs.Screen
@@ -121,7 +129,7 @@ const styles = StyleSheet.create({
     elevation: 10,
   },
   tabBarLabel: {
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: '600',
     marginTop: 4,
   },

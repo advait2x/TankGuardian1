@@ -129,14 +129,21 @@ export default function LandingScreen() {
           {/* CTA Section */}
           <View style={styles.ctaSection}>
             <Button
-              title="Get Started Free"
-              onPress={() => router.push('/signup')}
+              title="Sign In with Email (OTP)"
+              onPress={() => router.push('/auth-otp')}
               variant="primary"
               size="large"
               fullWidth
             />
             <Button
-              title="I already have an account"
+              title="Sign Up with Password"
+              onPress={() => router.push('/signup')}
+              variant="ghost"
+              size="medium"
+              fullWidth
+            />
+            <Button
+              title="Login with Password"
               onPress={() => router.push('/login')}
               variant="ghost"
               size="medium"

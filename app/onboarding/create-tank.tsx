@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, TextInput } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -9,6 +9,7 @@ import Button from '@/components/ui/Button';
 import GlassCard from '@/components/ui/GlassCard';
 import Input from '@/components/ui/Input';
 import { useApp } from '@/store/AppContext';
+import { useAuth } from '@/store/AuthContext';
 import { useToast } from '@/components/ui/Toast';
 import { TankType, WaterType } from '@/data/types';
 import * as Haptics from 'expo-haptics';
@@ -24,8 +25,10 @@ const tankSizes = [5, 10, 20, 29, 40, 55, 75, 100];
 
 export default function CreateTankScreen() {
   const router = useRouter();
-  const { createTank, completeOnboarding, currentUser } = useApp();
+  const { createTank, currentUser } = useApp();
+  const { setOnboardingComplete } = useAuth();
   const { showToast } = useToast();
+  const hasMarkedCompleteRef = useRef(false);
   
   const [tankName, setTankName] = useState('My First Tank');
   const [tankType, setTankType] = useState<TankType>('rectangle');
@@ -61,29 +64,50 @@ export default function CreateTankScreen() {
     
     const finalSize = customSize ? parseInt(customSize) : tankSize;
     
-    createTank({
-      userId: currentUser?.id || '',
-      name: tankName,
-      type: tankType,
-      sizeGallons: finalSize,
-      waterType,
-      startDate: new Date().toISOString(),
-      equipmentIds: [],
-      decorIds: [],
-      plantIds: [],
-      fishInstances: [],
-    });
-    
-    completeOnboarding();
-    showToast('Tank created! Welcome to TankGuardian!', 'success');
-    router.replace('/(tabs)');
+    try {
+      await createTank({
+        userId: currentUser?.id || '',
+        name: tankName,
+        type: tankType,
+        sizeGallons: finalSize,
+        waterType,
+        startDate: new Date().toISOString(),
+        equipmentIds: [],
+        decorIds: [],
+        plantIds: [],
+        fishInstances: [],
+      });
+      
+      // Mark onboarding complete only once
+      if (!hasMarkedCompleteRef.current) {
+        hasMarkedCompleteRef.current = true;
+        await setOnboardingComplete();
+      }
+      
+      showToast('Tank created! Welcome to TankGuardian!', 'success');
+      router.replace('/(tabs)');
+    } catch (error) {
+      console.error('[Onboarding] Error during tank creation:', error);
+      showToast('Failed to create tank. Please try again.', 'error');
+    }
   };
 
   const handleSkip = async () => {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    completeOnboarding();
-    showToast('Welcome to TankGuardian!', 'success');
-    router.replace('/(tabs)');
+    
+    try {
+      // Mark onboarding complete only once
+      if (!hasMarkedCompleteRef.current) {
+        hasMarkedCompleteRef.current = true;
+        await setOnboardingComplete();
+      }
+      
+      showToast('Welcome to TankGuardian!', 'success');
+      router.replace('/(tabs)');
+    } catch (error) {
+      console.error('[Onboarding] Error during onboarding completion:', error);
+      showToast('Failed to complete setup. Please try again.', 'error');
+    }
   };
 
   return (

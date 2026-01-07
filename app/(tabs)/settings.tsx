@@ -22,12 +22,14 @@ import Badge from '@/components/ui/Badge';
 import Modal from '@/components/ui/Modal';
 import Button from '@/components/ui/Button';
 import { useApp } from '@/store/AppContext';
+import { useAuth } from '@/store/AuthContext';
 import { useToast } from '@/components/ui/Toast';
 import * as Haptics from 'expo-haptics';
 
 export default function SettingsScreen() {
   const router = useRouter();
   const { currentUser, isPremium, setPremium, logout, updateUser } = useApp();
+  const { signOut } = useAuth();
   const { showToast } = useToast();
   
   const [notifications, setNotifications] = useState(true);
@@ -52,7 +54,14 @@ export default function SettingsScreen() {
 
   const handleLogout = async () => {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    logout();
+    
+    // Sign out from Supabase (this will trigger auth state change)
+    await signOut();
+    
+    // Clear app context state
+    await logout();
+    
+    // Reset navigation stack to landing page
     router.replace('/landing');
   };
 

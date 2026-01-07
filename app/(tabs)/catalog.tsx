@@ -148,10 +148,20 @@ export default function CatalogScreen() {
       .map(f => getSpeciesBySlugSync(f.speciesId, f))
       .filter(Boolean) as FishSpecies[];
 
+    // Track temperament conflicts to avoid duplicates
+    const conflictingTemperaments = new Set<string>();
+    
     for (const existing of existingFish) {
-        if ((species.temperament === 'aggressive' && existing.temperament === 'peaceful') ||
-            (species.temperament === 'peaceful' && existing.temperament === 'aggressive')) {
-          warnings.push(`Temperament conflict: ${species.commonName} (${species.temperament}) may not do well with ${existing.commonName} (${existing.temperament})`);
+      const conflictKey = `${species.temperament}-${existing.temperament}`;
+      const reverseConflictKey = `${existing.temperament}-${species.temperament}`;
+      
+      if ((species.temperament === 'aggressive' && existing.temperament === 'peaceful') ||
+          (species.temperament === 'peaceful' && existing.temperament === 'aggressive')) {
+        // Only add warning if we haven't already warned about this temperament combination
+        if (!conflictingTemperaments.has(conflictKey) && !conflictingTemperaments.has(reverseConflictKey)) {
+          warnings.push(`Temperament conflict: ${species.commonName} (${species.temperament}) may not do well with ${existing.temperament} fish in the tank`);
+          conflictingTemperaments.add(conflictKey);
+        }
       }
     }
 

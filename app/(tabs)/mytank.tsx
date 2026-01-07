@@ -37,12 +37,11 @@ import {
   Thermometer,
   X,
   Search,
-  Camera,
-  ChevronLeft,
-  ChevronRight
+  Camera
 } from 'lucide-react-native';
 import MascotIcon from '@/components/mascot/MascotIcon';
 import * as ImagePicker from 'expo-image-picker';
+import TankSwitcher from '@/components/tank/TankSwitcher';
 import AnimatedBackground from '@/components/ui/AnimatedBackground';
 import GlassCard from '@/components/ui/GlassCard';
 import Button from '@/components/ui/Button';
@@ -52,12 +51,19 @@ import Input from '@/components/ui/Input';
 import AddToTankSheet from '@/components/sheets/AddToTankSheet';
 import FishSprite from '@/components/tank/FishSprite';
 import FishThumb from '@/components/FishThumb';
+import WaterTrendsChart from '@/components/tank/WaterTrendsChart';
 import { useApp } from '@/store/AppContext';
+import { useAuth } from '@/store/AuthContext';
 import { useToast } from '@/components/ui/Toast';
 import { fishSpecies, generateId } from '@/data/mockData';
 import { getFishCatalog } from '@/utils/fishCatalogAdapter';
 import { saveWaterLog, fetchWaterLogs } from '@/utils/waterLogsAdapter';
+import { runDiseaseDetection } from '@/utils/diseaseDetection';
+import { fetchDiseaseCheckHistory } from '@/utils/remoteDiseaseChecks';
 import { preloadCatalog, getSpeciesBySlugSync } from '@/utils/tankSpeciesLookup';
+import { getLatestAquascapeLayout, AquascapeLayoutItem } from '@/utils/aquascapeRemote';
+import { mapLayoutToContainer, MappedLayoutItem, getAsset, normalizeLayout } from '@/utils/aquascapeLayout';
+import SubstrateLayer, { DEFAULT_SUBSTRATE } from '@/components/tank/SubstrateLayer';
 import * as Haptics from 'expo-haptics';
 import { useMascot } from '@/components/mascot/MascotContext';
 import { FishSpecies } from '@/data/types';
@@ -66,6 +72,40 @@ import { WaterLog } from '@/data/types';
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const TANK_WIDTH = SCREEN_WIDTH - 48;
 const TANK_HEIGHT = 220;
+
+// Aquascape editor canvas dimensions (for mapping)
+const AQUASCAPE_CANVAS_WIDTH = SCREEN_WIDTH - 48;
+const AQUASCAPE_CANVAS_HEIGHT = 400;
+
+// Aquascape item component (static, non-draggable)
+function AquascapeItem({ item, baseSize = 40 }: { item: MappedLayoutItem; baseSize?: number }) {
+  const asset = getAsset(item.assetKey);
+  
+  // Use mapped pixel coordinates
+  // Size already computed by mapping utility
+  const finalSize = baseSize * item.pixelScale;
+  
+  return (
+    <View
+      style={[
+        styles.aquascapeItem,
+        {
+          left: item.pixelX,
+          top: item.pixelY,
+          width: finalSize,
+          height: finalSize,
+          transform: [
+            { rotate: `${item.rotation}deg` },
+          ],
+          zIndex: item.z,
+        },
+      ]}
+      pointerEvents="none"
+    >
+      <Text style={{ fontSize: finalSize * 0.7 }}>{asset.emoji}</Text>
+    </View>
+  );
+}
 
 // Animated fish component
 function AnimatedFish({ 
@@ -166,6 +206,7 @@ function Bubble({ delay }: { delay: number }) {
 export default function MyTankScreen() {
   const router = useRouter();
   const { tanks, selectedTankId, selectTank, addWaterLog, tasks, completeTask, removeFishFromTank, addFishToTank, addFishInstances, isPremium, currentUser, diseaseCheckCount, incrementDiseaseCheck } = useApp();
+  const { session } = useAuth();
   const { showToast } = useToast();
   
   const selectedTank = tanks.find(t => t.id === selectedTankId);
@@ -179,6 +220,10 @@ export default function MyTankScreen() {
   const [showDiseaseDetectionModal, setShowDiseaseDetectionModal] = useState(false);
   const [diseaseAnalysisResult, setDiseaseAnalysisResult] = useState<any>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [detectionStage, setDetectionStage] = useState<'uploading' | 'analyzing' | 'complete' | 'error'>('uploading');
+  const [showDiseaseHistory, setShowDiseaseHistory] = useState(false);
+  const [diseaseHistory, setDiseaseHistory] = useState<any[]>([]);
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
   const { showMascot, hideMascot } = useMascot();
   
   // Fish catalog state
@@ -188,10 +233,74 @@ export default function MyTankScreen() {
   // Water history state
   const [waterHistory, setWaterHistory] = useState<WaterLog[]>([]);
   const [isLoadingWaterHistory, setIsLoadingWaterHistory] = useState(false);
-  
-  // Tank slider state
-  const [currentTankIndex, setCurrentTankIndex] = useState(0);
-  const scrollViewRef = useRef<ScrollView>(null);
+
+  // Aquascape state
+  const [aquascapeItems, setAquascapeItems] = useState<MappedLayoutItem[]>([]);
+  const [tankContainerSize, setTankContainerSize] = useState({ width: TANK_WIDTH, height: TANK_HEIGHT });
+  const [rawAquascapeLayout, setRawAquascapeLayout] = useState<AquascapeLayoutItem[]>([]);
+  const [layout, setLayout] = useState<any>(null); // Store full layout for substrate config
+
+  // Load aquascape items for selected tank
+  useEffect(() => {
+    if (!selectedTankId || !session?.user?.id) {
+      setAquascapeItems([]);
+      return;
+    }
+
+    let mounted = true;
+
+    async function loadAquascape() {
+      const result = await getLatestAquascapeLayout(selectedTankId!, session!.user.id);
+      
+      if (!mounted) return;
+      
+      if (result.ok && result.layout) {
+        // Normalize and store raw layout
+        const normalized = normalizeLayout(result.layout, AQUASCAPE_CANVAS_WIDTH, AQUASCAPE_CANVAS_HEIGHT);
+        setRawAquascapeLayout(normalized.items);
+        setLayout(normalized); // Store full layout
+        
+        // Map to container coordinates
+        const mapped = mapLayoutToContainer(
+          normalized,
+          tankContainerSize.width,
+          tankContainerSize.height
+        );
+        setAquascapeItems(mapped.items);
+        console.log('[MyTank] Loaded aquascape on mount:', mapped.items.length, 'items');
+      } else {
+        setRawAquascapeLayout([]);
+        setAquascapeItems([]);
+        setLayout(null);
+      }
+    }
+
+    loadAquascape();
+
+    return () => {
+      mounted = false;
+    };
+  }, [selectedTankId, session?.user?.id]);
+
+  // Remap aquascape when container size changes
+  useEffect(() => {
+    if (rawAquascapeLayout.length > 0) {
+      const layout = {
+        canvas: { 
+          w: AQUASCAPE_CANVAS_WIDTH, 
+          h: AQUASCAPE_CANVAS_HEIGHT, 
+          zoom: 1, 
+          panX: 0, 
+          panY: 0,
+          groundY: AQUASCAPE_CANVAS_HEIGHT * 0.85,
+        },
+        items: rawAquascapeLayout,
+      };
+      const mapped = mapLayoutToContainer(layout, tankContainerSize.width, tankContainerSize.height);
+      setAquascapeItems(mapped.items);
+      console.log('[MyTank] Remapped aquascape for container:', tankContainerSize.width, 'x', tankContainerSize.height);
+    }
+  }, [tankContainerSize, rawAquascapeLayout]);
 
   // Load fish catalog from database on mount
   useEffect(() => {
@@ -227,6 +336,46 @@ export default function MyTankScreen() {
     };
   }, []);
 
+  // Load disease history when opening history view
+  useEffect(() => {
+    if (!showDiseaseHistory || !session?.user?.id) {
+      return;
+    }
+
+    let mounted = true;
+    
+    async function loadDiseaseHistory() {
+      setIsLoadingHistory(true);
+      try {
+        const result = await fetchDiseaseCheckHistory({
+          ownerId: session.user.id,
+          tankId: selectedTankId || undefined,
+          limit: 20,
+        });
+        if (mounted && result.ok) {
+          setDiseaseHistory(result.checks || []);
+        }
+      } catch (error) {
+        if (__DEV__) {
+          console.warn('[MyTank] Failed to load disease history:', error);
+        }
+        if (mounted) {
+          setDiseaseHistory([]);
+        }
+      } finally {
+        if (mounted) {
+          setIsLoadingHistory(false);
+        }
+      }
+    }
+    
+    loadDiseaseHistory();
+    
+    return () => {
+      mounted = false;
+    };
+  }, [showDiseaseHistory, session?.user?.id, selectedTankId]);
+
   // Load water history when tank changes
   useEffect(() => {
     if (!selectedTankId) {
@@ -239,7 +388,7 @@ export default function MyTankScreen() {
     async function loadWaterHistory() {
       setIsLoadingWaterHistory(true);
       try {
-        const logs = await fetchWaterLogs(selectedTankId, currentUser?.id || null, 5); // Get 5 most recent
+        const logs = await fetchWaterLogs(selectedTankId, 5); // Get 5 most recent
         if (mounted) {
           setWaterHistory(logs);
         }
@@ -264,29 +413,45 @@ export default function MyTankScreen() {
     };
   }, [selectedTankId, currentUser?.id]);
 
-  // Reload water history when screen comes into focus
+  // Reload water history and aquascape when screen comes into focus
   useFocusEffect(
     React.useCallback(() => {
-      if (selectedTankId) {
-        fetchWaterLogs(selectedTankId, currentUser?.id || null, 5)
+      if (selectedTankId && session?.user?.id) {
+        // Reload water logs
+        fetchWaterLogs(selectedTankId, 5)
           .then(logs => setWaterHistory(logs))
           .catch(() => {
             // Silently fail
           });
+        
+        // Reload aquascape items
+        getLatestAquascapeLayout(selectedTankId, session.user.id)
+          .then(result => {
+            if (result.ok && result.layout) {
+              const normalized = normalizeLayout(result.layout, AQUASCAPE_CANVAS_WIDTH, AQUASCAPE_CANVAS_HEIGHT);
+              setRawAquascapeLayout(normalized.items);
+              setLayout(normalized); // Store full layout
+              
+              const mapped = mapLayoutToContainer(
+                normalized,
+                tankContainerSize.width,
+                tankContainerSize.height
+              );
+              setAquascapeItems(mapped.items);
+              console.log('[MyTank] Reloaded aquascape on focus:', mapped.items.length, 'items');
+            } else {
+              setRawAquascapeLayout([]);
+              setAquascapeItems([]);
+              setLayout(null);
+            }
+          })
+          .catch(() => {
+            // Silently fail
+          });
       }
-    }, [selectedTankId, currentUser?.id])
+    }, [selectedTankId, session?.user?.id, tankContainerSize])
   );
 
-  // Update current tank index when selectedTankId changes
-  useEffect(() => {
-    if (selectedTankId && tanks.length > 0) {
-      const index = tanks.findIndex(t => t.id === selectedTankId);
-      if (index !== -1) {
-        setCurrentTankIndex(index);
-      }
-    }
-  }, [selectedTankId, tanks]);
-  
   // Water log form
   const [waterParams, setWaterParams] = useState({
     ph: '',
@@ -300,31 +465,8 @@ export default function MyTankScreen() {
   const tankTasks = tasks.filter(t => t.tankId === selectedTankId);
   const bubbles = Array.from({ length: 8 }, (_, i) => i);
 
-  // Tank navigation handlers
-  const handlePreviousTank = async () => {
-    if (tanks.length === 0) return;
-    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    const newIndex = currentTankIndex > 0 ? currentTankIndex - 1 : tanks.length - 1;
-    setCurrentTankIndex(newIndex);
-    selectTank(tanks[newIndex].id);
-  };
-
-  const handleNextTank = async () => {
-    if (tanks.length === 0) return;
-    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    const newIndex = currentTankIndex < tanks.length - 1 ? currentTankIndex + 1 : 0;
-    setCurrentTankIndex(newIndex);
-    selectTank(tanks[newIndex].id);
-  };
-
-  const handleSelectTank = async (index: number) => {
-    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    setCurrentTankIndex(index);
-    selectTank(tanks[index].id);
-  };
-
-  const handleCreateNewTank = async () => {
-    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+  // Tank creation handler
+  const handleCreateNewTank = () => {
     router.push('/onboarding/create-tank');
   };
 
@@ -340,60 +482,78 @@ export default function MyTankScreen() {
 
   const handleFishPress = async (instanceId: string) => {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    
+    // Verify the fish species exists before showing modal
+    const fishInstance = selectedTank?.fishInstances.find(f => f.instanceId === instanceId);
+    if (!fishInstance) return;
+    
+    const species = getSpeciesBySlugSync(fishInstance.speciesId);
+    if (!species) {
+      showToast('Fish details not found', 'error');
+      return;
+    }
+    
     setSelectedFish(instanceId);
     setShowFishModal(true);
   };
 
   const handleSaveWaterLog = async () => {
+    // Guard: Check tank is selected
     if (!selectedTankId) {
       showToast('No tank selected', 'error');
+      return;
+    }
+
+    // Guard: Check tank ID is valid UUID (basic check)
+    const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!uuidPattern.test(selectedTankId)) {
+      showToast('Invalid tank ID', 'error');
+      return;
+    }
+
+    // Guard: Check user is authenticated
+    if (!currentUser?.id) {
+      showToast('Please sign in to save logs', 'error');
       return;
     }
 
     try {
       await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
 
-      // Debug logging
-      console.log('[WaterLog] activeTankId', selectedTankId);
-      console.log('[WaterLog] user', currentUser?.id || null);
-      console.log('[WaterLog] payload', {
-        ph: waterParams.ph,
-        temp: waterParams.temp,
-        ammonia: waterParams.ammonia,
-        nitrite: waterParams.nitrite,
-        nitrate: waterParams.nitrate,
-        notes: waterParams.notes,
-      });
+      // Convert string inputs to numbers or null
+      const payload = {
+        ph: waterParams.ph?.trim() ? parseFloat(waterParams.ph) : null,
+        temperature: waterParams.temp?.trim() ? parseFloat(waterParams.temp) : null,
+        ammonia: waterParams.ammonia?.trim() ? parseFloat(waterParams.ammonia) : null,
+        nitrite: waterParams.nitrite?.trim() ? parseFloat(waterParams.nitrite) : null,
+        nitrate: waterParams.nitrate?.trim() ? parseFloat(waterParams.nitrate) : null,
+        notes: waterParams.notes?.trim() || null,
+      };
 
-      // Save to Supabase - pass tank.id, user?.id, deviceId is handled internally
-      const result = await saveWaterLog(
-        selectedTankId,
-        currentUser?.id || null,
-        {
-          ph: waterParams.ph,
-          temp: waterParams.temp,
-          ammonia: waterParams.ammonia,
-          nitrite: waterParams.nitrite,
-          nitrate: waterParams.nitrate,
-          notes: waterParams.notes,
-        }
-      );
+      if (__DEV__) {
+        console.log('[WaterLog] Saving for tank:', selectedTankId);
+        console.log('[WaterLog] User:', currentUser.id);
+        console.log('[WaterLog] Payload:', payload);
+      }
+
+      // Save to Supabase via adapter
+      const result = await saveWaterLog(selectedTankId, payload);
 
       if (result.ok) {
         // Success - also save to local state for immediate UI update
         addWaterLog(selectedTankId, {
           date: new Date().toISOString(),
-          ph: parseFloat(waterParams.ph) || 0,
-          ammonia: parseFloat(waterParams.ammonia) || 0,
-          nitrite: parseFloat(waterParams.nitrite) || 0,
-          nitrate: parseFloat(waterParams.nitrate) || 0,
-          temp: parseFloat(waterParams.temp) || 0,
-          notes: waterParams.notes,
+          ph: payload.ph ?? 0,
+          ammonia: payload.ammonia ?? 0,
+          nitrite: payload.nitrite ?? 0,
+          nitrate: payload.nitrate ?? 0,
+          temp: payload.temperature ?? 0,
+          notes: payload.notes ?? '',
         });
 
         // Refresh water history immediately
         try {
-          const logs = await fetchWaterLogs(selectedTankId, currentUser?.id || null, 5);
+          const logs = await fetchWaterLogs(selectedTankId, 5);
           setWaterHistory(logs);
         } catch (err) {
           // Silently fail - not critical
@@ -462,6 +622,12 @@ export default function MyTankScreen() {
   const handleDiseaseDetectionPress = async () => {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     
+    // Check auth
+    if (!session?.user?.id) {
+      showToast('Please log in to use disease detection', 'error');
+      return;
+    }
+    
     // Check if user has already used their free scan
     if (!isPremium && diseaseCheckCount >= 1) {
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
@@ -488,34 +654,38 @@ export default function MyTankScreen() {
     
     if (!result.canceled && result.assets[0]) {
       setIsAnalyzing(true);
+      setDetectionStage('uploading');
       setShowDiseaseDetectionModal(true);
       
-      // Simulate API call (replace with actual API later)
-      setTimeout(() => {
-        const mockAnalysis = {
-          disease: 'Ich (White Spot Disease)',
-          confidence: 87,
-          symptoms: ['White spots on body', 'Flashing behavior', 'Clamped fins'],
-          treatment: [
-            'Raise temperature to 82-86°F gradually',
-            'Add aquarium salt (1 tablespoon per 5 gallons)',
-            'Use ich medication as directed',
-            'Maintain excellent water quality',
-          ],
-          severity: 'Moderate',
+      // Run actual disease detection
+      const detectionResult = await runDiseaseDetection({
+        localUri: result.assets[0].uri,
+        tankId: selectedTankId || undefined,
+        sessionUserId: session.user.id,
+        onProgress: (stage) => {
+          setDetectionStage(stage);
+        },
+      });
+      
+      if (detectionResult.ok && detectionResult.result) {
+        setDiseaseAnalysisResult({
+          ...detectionResult.result,
           imageUri: result.assets[0].uri,
-        };
-        
-        setDiseaseAnalysisResult(mockAnalysis);
+        });
         setIsAnalyzing(false);
         
-        // Increment disease check count for free users (they've now used their 1 free scan)
+        // Increment disease check count for free users
         if (!isPremium) {
           incrementDiseaseCheck();
         }
         
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      }, 2500);
+      } else {
+        setIsAnalyzing(false);
+        setShowDiseaseDetectionModal(false);
+        showToast(detectionResult.error || 'Analysis failed', 'error');
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      }
     }
   };
 
@@ -628,95 +798,15 @@ export default function MyTankScreen() {
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
         >
-          {/* Tank Slider - Only show if there are tanks */}
-          {tanks.length > 0 && (
-            <Animated.View entering={FadeInDown.duration(200)} style={styles.tankSliderContainer}>
-              <View style={styles.tankSlider}>
-                {/* Previous button */}
-                {tanks.length > 1 && (
-                  <TouchableOpacity 
-                    style={styles.sliderArrow}
-                    onPress={handlePreviousTank}
-                  >
-                    <ChevronLeft size={24} color="#0D7377" />
-                  </TouchableOpacity>
-                )}
-
-                {/* Tank cards carousel */}
-                <View style={styles.tankCardsContainer}>
-                  <ScrollView
-                    ref={scrollViewRef}
-                    horizontal
-                    pagingEnabled
-                    showsHorizontalScrollIndicator={false}
-                    scrollEnabled={false}
-                    contentContainerStyle={styles.tankCardsScroll}
-                  >
-                    {tanks.map((tank, index) => (
-                      <TouchableOpacity
-                        key={tank.id}
-                        style={[
-                          styles.tankSliderCard,
-                          currentTankIndex === index && styles.tankSliderCardActive
-                        ]}
-                        onPress={() => handleSelectTank(index)}
-                        activeOpacity={0.7}
-                      >
-                        <Text style={[
-                          styles.tankSliderName,
-                          currentTankIndex === index && styles.tankSliderNameActive
-                        ]}>
-                          {tank.name}
-                        </Text>
-                        <Text style={[
-                          styles.tankSliderInfo,
-                          currentTankIndex === index && styles.tankSliderInfoActive
-                        ]}>
-                          {tank.sizeGallons}gal • {tank.fishInstances.length} fish
-                        </Text>
-                      </TouchableOpacity>
-                    ))}
-                    
-                    {/* Add New Tank Card */}
-                    <TouchableOpacity
-                      style={styles.tankSliderCardNew}
-                      onPress={handleCreateNewTank}
-                      activeOpacity={0.7}
-                    >
-                      <Plus size={20} color="#0D7377" />
-                      <Text style={styles.tankSliderNewText}>New Tank</Text>
-                    </TouchableOpacity>
-                  </ScrollView>
-                </View>
-
-                {/* Next button */}
-                {tanks.length > 1 && (
-                  <TouchableOpacity 
-                    style={styles.sliderArrow}
-                    onPress={handleNextTank}
-                  >
-                    <ChevronRight size={24} color="#0D7377" />
-                  </TouchableOpacity>
-                )}
-              </View>
-
-              {/* Dots indicator */}
-              {tanks.length > 1 && (
-                <View style={styles.dotsContainer}>
-                  {tanks.map((_, index) => (
-                    <TouchableOpacity
-                      key={index}
-                      style={[
-                        styles.dot,
-                        currentTankIndex === index && styles.dotActive
-                      ]}
-                      onPress={() => handleSelectTank(index)}
-                    />
-                  ))}
-                </View>
-              )}
-            </Animated.View>
-          )}
+          {/* Tank Switcher */}
+          <Animated.View entering={FadeInDown.duration(200)}>
+            <TankSwitcher
+              tanks={tanks}
+              selectedTankId={selectedTankId}
+              onSelectTank={selectTank}
+              onCreateTank={handleCreateNewTank}
+            />
+          </Animated.View>
 
           {/* Header */}
           <Animated.View entering={FadeInDown.duration(220)} style={styles.header}>
@@ -730,11 +820,33 @@ export default function MyTankScreen() {
           {/* Tank Viewer */}
           <Animated.View entering={FadeIn.delay(100).duration(240)}>
             <GlassCard style={styles.tankViewerCard}>
-              <View style={styles.tankViewer}>
+              <View 
+                style={styles.tankViewer}
+                onLayout={(e) => {
+                  const { width, height } = e.nativeEvent.layout;
+                  if (width > 0 && height > 0) {
+                    setTankContainerSize({ width, height });
+                  }
+                }}
+              >
                 {/* Tank glass effect */}
                 <View style={styles.tankGlass}>
                   {/* Water */}
                   <View style={styles.tankWater} pointerEvents="box-none">
+                    {/* Substrate layer - always visible */}
+                    <SubstrateLayer
+                      config={layout?.canvas?.substrate || DEFAULT_SUBSTRATE}
+                      containerWidth={tankContainerSize.width}
+                      containerHeight={tankContainerSize.height}
+                    />
+                    
+                    {/* Aquascape items (behind fish) */}
+                    {aquascapeItems
+                      .sort((a, b) => a.z - b.z)
+                      .map((item) => (
+                        <AquascapeItem key={item.id} item={item} />
+                      ))}
+                    
                     {/* Bubbles */}
                     {bubbles.map((_, i) => (
                       <Bubble key={i} delay={i * 300} />
@@ -749,15 +861,6 @@ export default function MyTankScreen() {
                         onPress={() => handleFishPress(instance.instanceId)}
                       />
                     ))}
-                    
-                    {/* Decorations */}
-                    <View style={styles.gravel} pointerEvents="none" />
-                    <View style={styles.plant1} pointerEvents="none">
-                      <Text style={{ fontSize: 28 }}>🌿</Text>
-                    </View>
-                    <View style={styles.plant2} pointerEvents="none">
-                      <Text style={{ fontSize: 24 }}>🪨</Text>
-                    </View>
                   </View>
                 </View>
               </View>
@@ -851,12 +954,23 @@ export default function MyTankScreen() {
                 </Text>
               </View>
               
-              <Button
-                title="Scan for Diseases"
-                onPress={handleDiseaseDetectionPress}
-                variant="primary"
-                icon={<Camera size={20} color="#fff" />}
-              />
+              <View style={styles.diseaseButtonRow}>
+                <Button
+                  title="Scan for Diseases"
+                  onPress={handleDiseaseDetectionPress}
+                  variant="primary"
+                  icon={<Camera size={20} color="#fff" />}
+                  style={{ flex: 1 }}
+                />
+                {session?.user?.id && (
+                  <TouchableOpacity 
+                    style={styles.historyButton}
+                    onPress={() => setShowDiseaseHistory(true)}
+                  >
+                    <Text style={styles.historyButtonText}>History</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
               
               <View style={styles.diseaseDetectionDisclaimer}>
                 <AlertCircle size={14} color="#FF9800" />
@@ -957,6 +1071,13 @@ export default function MyTankScreen() {
               </View>
             )}
           </Animated.View>
+
+          {/* Water Trends Chart */}
+          {selectedTankId && (
+            <Animated.View entering={FadeInDown.delay(225).duration(220)}>
+              <WaterTrendsChart tankId={selectedTankId} />
+            </Animated.View>
+          )}
 
           {/* Stock List */}
           <Animated.View entering={FadeInDown.delay(225).duration(220)}>
@@ -1392,8 +1513,16 @@ export default function MyTankScreen() {
         {isAnalyzing ? (
           <View style={styles.analyzingContainer}>
             <MascotIcon variant="search" size={80} />
-            <Text style={styles.analyzingText}>Analyzing image...</Text>
-            <Text style={styles.analyzingSubtext}>This may take a few moments</Text>
+            <Text style={styles.analyzingText}>
+              {detectionStage === 'uploading' && 'Uploading image...'}
+              {detectionStage === 'analyzing' && 'Analyzing image...'}
+              {detectionStage === 'complete' && 'Complete!'}
+            </Text>
+            <Text style={styles.analyzingSubtext}>
+              {detectionStage === 'uploading' && 'Securing your image'}
+              {detectionStage === 'analyzing' && 'AI is examining your fish'}
+              {detectionStage === 'complete' && 'Processing results'}
+            </Text>
           </View>
         ) : diseaseAnalysisResult ? (
           <ScrollView style={styles.diseaseResultContent} showsVerticalScrollIndicator={false}>
@@ -1407,7 +1536,7 @@ export default function MyTankScreen() {
 
             {/* Disease Name & Confidence */}
             <View style={styles.diseaseHeader}>
-              <Text style={styles.diseaseName}>{diseaseAnalysisResult.disease}</Text>
+              <Text style={styles.diseaseName}>{diseaseAnalysisResult.likelyIssue}</Text>
               <View style={styles.confidenceContainer}>
                 <Text style={styles.confidenceLabel}>Confidence:</Text>
                 <Text style={[
@@ -1420,39 +1549,53 @@ export default function MyTankScreen() {
             </View>
 
             {/* Severity Badge */}
-            <Badge 
-              label={`Severity: ${diseaseAnalysisResult.severity}`}
-              variant={diseaseAnalysisResult.severity === 'Low' ? 'success' : diseaseAnalysisResult.severity === 'Moderate' ? 'warning' : 'danger'}
-            />
+            {diseaseAnalysisResult.severity && (
+              <Badge 
+                label={`Severity: ${diseaseAnalysisResult.severity}`}
+                variant={diseaseAnalysisResult.severity === 'Mild' || diseaseAnalysisResult.severity === 'None' ? 'success' : diseaseAnalysisResult.severity === 'Moderate' ? 'warning' : 'danger'}
+              />
+            )}
+
+            {/* Advice */}
+            {diseaseAnalysisResult.advice && (
+              <View style={styles.diseaseSection}>
+                <Text style={styles.diseaseSectionTitle}>Analysis</Text>
+                <Text style={styles.adviceText}>{diseaseAnalysisResult.advice}</Text>
+              </View>
+            )}
 
             {/* Symptoms */}
-            <View style={styles.diseaseSection}>
-              <Text style={styles.diseaseSectionTitle}>Observed Symptoms</Text>
-              {diseaseAnalysisResult.symptoms.map((symptom: string, index: number) => (
-                <View key={index} style={styles.symptomItem}>
-                  <Check size={16} color="#10B981" />
-                  <Text style={styles.symptomText}>{symptom}</Text>
-                </View>
-              ))}
-            </View>
+            {diseaseAnalysisResult.symptoms && diseaseAnalysisResult.symptoms.length > 0 && (
+              <View style={styles.diseaseSection}>
+                <Text style={styles.diseaseSectionTitle}>Observed Symptoms</Text>
+                {diseaseAnalysisResult.symptoms.map((symptom: string, index: number) => (
+                  <View key={index} style={styles.symptomItem}>
+                    <Check size={16} color="#10B981" />
+                    <Text style={styles.symptomText}>{symptom}</Text>
+                  </View>
+                ))}
+              </View>
+            )}
 
             {/* Treatment */}
-            <View style={styles.diseaseSection}>
-              <Text style={styles.diseaseSectionTitle}>Recommended Treatment</Text>
-              {diseaseAnalysisResult.treatment.map((step: string, index: number) => (
-                <View key={index} style={styles.treatmentItem}>
-                  <Text style={styles.treatmentNumber}>{index + 1}</Text>
-                  <Text style={styles.treatmentText}>{step}</Text>
-                </View>
-              ))}
-            </View>
+            {diseaseAnalysisResult.treatment && diseaseAnalysisResult.treatment.length > 0 && (
+              <View style={styles.diseaseSection}>
+                <Text style={styles.diseaseSectionTitle}>Recommended Treatment</Text>
+                {diseaseAnalysisResult.treatment.map((step: string, index: number) => (
+                  <View key={index} style={styles.treatmentItem}>
+                    <Text style={styles.treatmentNumber}>{index + 1}</Text>
+                    <Text style={styles.treatmentText}>{step}</Text>
+                  </View>
+                ))}
+              </View>
+            )}
 
             {/* Free User Notice */}
             {!isPremium && (
               <View style={styles.freeUserNotice}>
                 <AlertCircle size={16} color="#4ECDC4" />
                 <Text style={styles.freeUserNoticeText}>
-                  This was your free disease check! Upgrade to save results and get unlimited scans.
+                  This was your free disease check! Upgrade for unlimited scans and history.
                 </Text>
               </View>
             )}
@@ -1460,23 +1603,96 @@ export default function MyTankScreen() {
             {/* Action Buttons */}
             <View style={styles.diseaseActionButtons}>
               <Button
-                title={isPremium ? "Save to History" : "Upgrade to Save"}
-                onPress={handleSaveToHistory}
-                variant={isPremium ? "primary" : "secondary"}
+                title="Close"
+                onPress={() => {
+                  setShowDiseaseDetectionModal(false);
+                  setDiseaseAnalysisResult(null);
+                }}
+                variant="primary"
               />
-              {!isPremium && (
-                <Button
-                  title="Close"
-                  onPress={() => {
-                    setShowDiseaseDetectionModal(false);
-                    setDiseaseAnalysisResult(null);
-                  }}
-                  variant="ghost"
-                />
-              )}
             </View>
           </ScrollView>
         ) : null}
+      </Modal>
+
+      {/* Disease History Modal */}
+      <Modal
+        visible={showDiseaseHistory}
+        onClose={() => setShowDiseaseHistory(false)}
+        title="Disease Check History"
+        size="large"
+      >
+        {isLoadingHistory ? (
+          <View style={styles.analyzingContainer}>
+            <Text style={styles.analyzingText}>Loading history...</Text>
+          </View>
+        ) : diseaseHistory.length === 0 ? (
+          <View style={styles.emptyHistoryContainer}>
+            <Camera size={48} color="#94A3B8" />
+            <Text style={styles.emptyHistoryText}>No disease checks yet</Text>
+            <Text style={styles.emptyHistorySubtext}>
+              Scan your fish to track their health over time
+            </Text>
+          </View>
+        ) : (
+          <ScrollView style={styles.historyScrollView} showsVerticalScrollIndicator={false}>
+            {diseaseHistory.map((check) => {
+              const result = check.result || {};
+              const checkDate = new Date(check.created_at);
+              const formattedDate = checkDate.toLocaleDateString('en-US', {
+                month: 'short',
+                day: 'numeric',
+                year: 'numeric',
+              });
+              const formattedTime = checkDate.toLocaleTimeString('en-US', {
+                hour: 'numeric',
+                minute: '2-digit',
+              });
+
+              return (
+                <View key={check.id} style={styles.historyItem}>
+                  <View style={styles.historyItemHeader}>
+                    <Text style={styles.historyItemTitle}>
+                      {result.likelyIssue || 'Analysis'}
+                    </Text>
+                    <Text style={styles.historyItemDate}>
+                      {formattedDate} at {formattedTime}
+                    </Text>
+                  </View>
+                  
+                  {result.confidence && (
+                    <View style={styles.historyItemRow}>
+                      <Text style={styles.historyItemLabel}>Confidence:</Text>
+                      <Text style={[
+                        styles.historyItemValue,
+                        { color: result.confidence >= 80 ? '#10B981' : result.confidence >= 60 ? '#FF9800' : '#EF4444' }
+                      ]}>
+                        {result.confidence}%
+                      </Text>
+                    </View>
+                  )}
+                  
+                  {result.severity && (
+                    <View style={styles.historyItemRow}>
+                      <Text style={styles.historyItemLabel}>Severity:</Text>
+                      <Text style={styles.historyItemValue}>{result.severity}</Text>
+                    </View>
+                  )}
+                  
+                  {result.status === 'error' && result.error && (
+                    <Text style={styles.historyItemError}>Error: {result.error}</Text>
+                  )}
+                  
+                  {result.advice && (
+                    <Text style={styles.historyItemAdvice} numberOfLines={2}>
+                      {result.advice}
+                    </Text>
+                  )}
+                </View>
+              );
+            })}
+          </ScrollView>
+        )}
       </Modal>
     </View>
   );
@@ -1572,6 +1788,11 @@ const styles = StyleSheet.create({
     bottom: 12,
     right: 40,
   },
+  aquascapeItem: {
+    position: 'absolute',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   viewerHint: {
     fontSize: 12,
     color: '#94A3B8',
@@ -1636,6 +1857,105 @@ const styles = StyleSheet.create({
   diseaseDetectionSubtitle: {
     fontSize: 14,
     color: '#64748B',
+  },
+  diseaseButtonRow: {
+    flexDirection: 'row',
+    gap: 10,
+    alignItems: 'center',
+  },
+  historyButton: {
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(13, 115, 119, 0.3)',
+    backgroundColor: 'rgba(13, 115, 119, 0.05)',
+  },
+  historyButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#0D7377',
+  },
+  diseaseDetectionDisclaimer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(0, 0, 0, 0.05)',
+  },
+  adviceText: {
+    fontSize: 14,
+    color: '#475569',
+    lineHeight: 20,
+  },
+  emptyHistoryContainer: {
+    alignItems: 'center',
+    padding: 40,
+    gap: 12,
+  },
+  emptyHistoryText: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#2C3E50',
+    marginTop: 8,
+  },
+  emptyHistorySubtext: {
+    fontSize: 14,
+    color: '#64748B',
+    textAlign: 'center',
+    maxWidth: 240,
+  },
+  historyScrollView: {
+    maxHeight: 500,
+  },
+  historyItem: {
+    backgroundColor: 'rgba(13, 115, 119, 0.05)',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(13, 115, 119, 0.1)',
+  },
+  historyItemHeader: {
+    marginBottom: 8,
+  },
+  historyItemTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1A252F',
+    marginBottom: 4,
+  },
+  historyItemDate: {
+    fontSize: 12,
+    color: '#64748B',
+  },
+  historyItemRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 4,
+  },
+  historyItemLabel: {
+    fontSize: 13,
+    color: '#64748B',
+    marginRight: 8,
+  },
+  historyItemValue: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#2C3E50',
+  },
+  historyItemError: {
+    fontSize: 12,
+    color: '#EF4444',
+    marginTop: 6,
+  },
+  historyItemAdvice: {
+    fontSize: 13,
+    color: '#475569',
+    marginTop: 8,
+    lineHeight: 18,
   },
   diseaseDetectionDisclaimer: {
     flexDirection: 'row',
@@ -2086,101 +2406,6 @@ const styles = StyleSheet.create({
   diseaseActionButtons: {
     gap: 12,
     marginTop: 8,
-  },
-  // Tank Slider Styles
-  tankSliderContainer: {
-    marginBottom: 16,
-  },
-  tankSlider: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 8,
-  },
-  sliderArrow: {
-    width: 40,
-    height: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.9)',
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: 'rgba(13, 115, 119, 0.2)',
-  },
-  tankCardsContainer: {
-    flex: 1,
-    overflow: 'hidden',
-  },
-  tankCardsScroll: {
-    gap: 12,
-  },
-  tankSliderCard: {
-    backgroundColor: 'rgba(255, 255, 255, 0.7)',
-    borderRadius: 16,
-    padding: 16,
-    minWidth: 150,
-    maxWidth: 180,
-    borderWidth: 2,
-    borderColor: 'transparent',
-  },
-  tankSliderCardActive: {
-    backgroundColor: 'rgba(13, 115, 119, 0.15)',
-    borderColor: '#0D7377',
-  },
-  tankSliderName: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#2C3E50',
-    marginBottom: 4,
-  },
-  tankSliderNameActive: {
-    color: '#0D7377',
-  },
-  tankSliderInfo: {
-    fontSize: 12,
-    color: '#64748B',
-    fontWeight: '500',
-  },
-  tankSliderInfoActive: {
-    color: '#0D7377',
-  },
-  tankSliderCardNew: {
-    backgroundColor: 'rgba(255, 255, 255, 0.5)',
-    borderRadius: 16,
-    padding: 16,
-    minWidth: 120,
-    maxWidth: 150,
-    borderWidth: 2,
-    borderColor: '#0D7377',
-    borderStyle: 'dashed',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    flexDirection: 'row',
-  },
-  tankSliderNewText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#0D7377',
-  },
-  dotsContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    marginTop: 12,
-  },
-  dot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: 'rgba(13, 115, 119, 0.2)',
-  },
-  dotActive: {
-    width: 24,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: '#0D7377',
   },
   // Water History Styles
   waterHistoryList: {
