@@ -37,6 +37,12 @@ import {
 } from '@/utils/aquascapeRemote';
 import { normalizeLayout, ASSET_REGISTRY, getAsset } from '@/utils/aquascapeLayout';
 import SubstrateLayer, { SubstrateType, getSubstrateTop, DEFAULT_SUBSTRATE } from '@/components/tank/SubstrateLayer';
+import FloraSelectionSheet from '@/components/sheets/FloraSelectionSheet';
+import HardscapeSelectionSheet from '@/components/sheets/HardscapeSelectionSheet';
+import FishThumb from '@/components/FishThumb';
+import { FloraItem } from '@/utils/floraCatalogAdapter';
+import { HardscapeItem } from '@/utils/hardscapeCatalogAdapter';
+import { getPublicImageUrl } from '@/utils/storageUrls';
 import * as Haptics from 'expo-haptics';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -182,6 +188,9 @@ function DraggableItem({
 
   const asset = getAsset(item.assetKey);
 
+  // Check if this is a catalog item with an image
+  const hasCatalogImage = !!item.catalogItemSlug && !!item.catalogItemType && !!item.assetKey;
+
   return (
     <GestureDetector gesture={composed}>
       <Animated.View style={animatedStyle}>
@@ -189,10 +198,17 @@ function DraggableItem({
           style={[
             styles.draggableItem,
             isSelected && styles.draggableItemSelected,
-          ]
-        }
+          ]}
         >
-          <Text style={styles.itemEmoji}>{asset.emoji}</Text>
+          {hasCatalogImage ? (
+            <FishThumb
+              imageKey={item.assetKey}
+              size={40}
+              style={{ borderRadius: 8 }}
+            />
+          ) : (
+            <Text style={styles.itemEmoji}>{asset.emoji}</Text>
+          )}
           {isSelected && (
             <TouchableOpacity
               style={styles.removeButton}
@@ -234,6 +250,8 @@ export default function AquascapeScreen() {
   const [snapToGrid, setSnapToGrid] = useState(true);
   const [placeOnSubstrate, setPlaceOnSubstrate] = useState(true);
   const [canvasSize, setCanvasSize] = useState({ width: CANVAS_WIDTH, height: CANVAS_HEIGHT });
+  const [showFloraSheet, setShowFloraSheet] = useState(false);
+  const [showHardscapeSheet, setShowHardscapeSheet] = useState(false);
 
   const canvasZoom = useSharedValue(1);
   const canvasPanX = useSharedValue(0);
@@ -384,7 +402,12 @@ export default function AquascapeScreen() {
     }
   };
 
-  const addItem = (type: 'rock' | 'wood' | 'plant', assetKey: string) => {
+  const addItem = (
+    type: 'rock' | 'wood' | 'plant',
+    assetKey: string,
+    catalogItemSlug?: string,
+    catalogItemType?: 'flora' | 'hardscape'
+  ) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     
     const maxZ = layout.items.length > 0 ? Math.max(...layout.items.map(i => num(i.z, 0))) : 0;
@@ -398,6 +421,8 @@ export default function AquascapeScreen() {
       id: `${type}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
       type,
       assetKey,
+      catalogItemSlug,
+      catalogItemType,
       x: num(canvasSize.width / 2 - 20, 0),
       y: placeOnSubstrate ? num(substrateTop - itemSize, 0) : num(canvasSize.height / 2 - 20, 0),
       scale: 1,
@@ -432,6 +457,19 @@ export default function AquascapeScreen() {
   const bringToFront = (id: string) => {
     const maxZ = layout.items.length > 0 ? Math.max(...layout.items.map(i => num(i.z, 0))) : 0;
     updateItem(id, { z: num(maxZ + 1, 1) });
+  };
+
+  const handleFloraSelect = (flora: FloraItem) => {
+    // Use imageKey from catalog as assetKey so FishThumb can display it
+    addItem('plant', flora.imageKey || `flora-${flora.slug}`, flora.slug, 'flora');
+    setShowFloraSheet(false);
+  };
+
+  const handleHardscapeSelect = (hardscape: HardscapeItem) => {
+    const type = hardscape.itemType === 'rock' ? 'rock' : 'wood';
+    // Use imageKey from catalog as assetKey so FishThumb can display it
+    addItem(type, hardscape.imageKey || `hardscape-${hardscape.slug}`, hardscape.slug, 'hardscape');
+    setShowHardscapeSheet(false);
   };
 
   const handleSubstrateChange = (type: SubstrateType) => {
@@ -689,26 +727,18 @@ export default function AquascapeScreen() {
               <View style={styles.paletteButtons}>
                 <TouchableOpacity
                   style={styles.paletteButton}
-                  onPress={() => addItem('rock', 'rock-1')}
-                >
-                  <Text style={styles.paletteEmoji}>🪨</Text>
-                  <Text style={styles.paletteLabel}>Rock</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={styles.paletteButton}
-                  onPress={() => addItem('wood', 'wood-1')}
-                >
-                  <Text style={styles.paletteEmoji}>🪵</Text>
-                  <Text style={styles.paletteLabel}>Wood</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={styles.paletteButton}
-                  onPress={() => addItem('plant', 'plant-1')}
+                  onPress={() => setShowFloraSheet(true)}
                 >
                   <Text style={styles.paletteEmoji}>🌿</Text>
-                  <Text style={styles.paletteLabel}>Plant</Text>
+                  <Text style={styles.paletteLabel}>Plants/Coral</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.paletteButton}
+                  onPress={() => setShowHardscapeSheet(true)}
+                >
+                  <Text style={styles.paletteEmoji}>🪨</Text>
+                  <Text style={styles.paletteLabel}>Decorations</Text>
                 </TouchableOpacity>
               </View>
             </GlassCard>
@@ -744,6 +774,22 @@ export default function AquascapeScreen() {
           )}
         </ScrollView>
       </SafeAreaView>
+
+      {/* Flora Selection Sheet */}
+      <FloraSelectionSheet
+        visible={showFloraSheet}
+        onClose={() => setShowFloraSheet(false)}
+        onSelect={handleFloraSelect}
+        selectedTank={selectedTank || null}
+      />
+
+      {/* Hardscape Selection Sheet */}
+      <HardscapeSelectionSheet
+        visible={showHardscapeSheet}
+        onClose={() => setShowHardscapeSheet(false)}
+        onSelect={handleHardscapeSelect}
+        selectedTank={selectedTank || null}
+      />
     </GestureHandlerRootView>
   );
 }

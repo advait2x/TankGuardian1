@@ -7,12 +7,24 @@
 
 import { supabase } from './supabase';
 
+// Profile data structure returned by getProfile and ensureProfile
+export interface ProfileData {
+  id: string;
+  has_completed_onboarding: boolean;
+  is_premium: boolean;
+  has_used_free_trial: boolean;
+  premium_expires_at: string | null;
+}
+
 interface ProfileResult {
   ok: boolean;
   data?: {
     id: string;
     display_name: string | null;
     has_completed_onboarding: boolean;
+    is_premium: boolean;
+    has_used_free_trial: boolean;
+    premium_expires_at: string | null;
   };
   errorCode?: string;
   errorMessage?: string;
@@ -44,7 +56,7 @@ export async function getMyProfile(): Promise<ProfileResult> {
 
     const { data, error } = await supabase
       .from('profiles')
-      .select('id, display_name, has_completed_onboarding')
+      .select('id, display_name, has_completed_onboarding, is_premium, has_used_free_trial, premium_expires_at')
       .eq('id', session.user.id)
       .maybeSingle();
 
@@ -77,6 +89,9 @@ export async function getMyProfile(): Promise<ProfileResult> {
         id: data.id,
         display_name: data.display_name,
         has_completed_onboarding: !!data.has_completed_onboarding,
+        is_premium: !!data.is_premium,
+        has_used_free_trial: !!data.has_used_free_trial,
+        premium_expires_at: data.premium_expires_at,
       },
     };
   } catch (err) {
@@ -264,5 +279,100 @@ export async function setOnboardingComplete(
     const message = err instanceof Error ? err.message : 'Unknown error';
     console.error('[remoteProfiles] setOnboardingComplete exception:', message);
     return { ok: false, error: message };
+  }
+}
+
+/**
+ * Set premium status for the current user
+ */
+export async function setPremiumStatus(isPremium: boolean, expiresAt?: string): Promise<UpdateResult> {
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    
+    if (!session?.user) {
+      console.warn('[remoteProfiles] setPremiumStatus: no active session');
+      return {
+        ok: false,
+        errorCode: 'NO_SESSION',
+        errorMessage: 'No active session',
+      };
+    }
+
+    console.log('[remoteProfiles] Setting premium status:', { isPremium, expiresAt });
+
+    const updateData: any = { is_premium: isPremium };
+    if (expiresAt !== undefined) {
+      updateData.premium_expires_at = expiresAt;
+    }
+
+    const { error } = await supabase
+      .from('profiles')
+      .update(updateData)
+      .eq('id', session.user.id);
+
+    if (error) {
+      console.error('[remoteProfiles] setPremiumStatus error:', error.message);
+      return {
+        ok: false,
+        errorCode: error.code || 'UPDATE_ERROR',
+        errorMessage: error.message,
+      };
+    }
+
+    console.log('[remoteProfiles] ✅ Premium status updated');
+    return { ok: true };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Unknown error';
+    console.error('[remoteProfiles] setPremiumStatus exception:', message);
+    return {
+      ok: false,
+      errorCode: 'EXCEPTION',
+      errorMessage: message,
+    };
+  }
+}
+
+/**
+ * Mark free trial as used for the current user
+ */
+export async function markFreeTrialUsed(): Promise<UpdateResult> {
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    
+    if (!session?.user) {
+      console.warn('[remoteProfiles] markFreeTrialUsed: no active session');
+      return {
+        ok: false,
+        errorCode: 'NO_SESSION',
+        errorMessage: 'No active session',
+      };
+    }
+
+    console.log('[remoteProfiles] Marking free trial as used');
+
+    const { error } = await supabase
+      .from('profiles')
+      .update({ has_used_free_trial: true })
+      .eq('id', session.user.id);
+
+    if (error) {
+      console.error('[remoteProfiles] markFreeTrialUsed error:', error.message);
+      return {
+        ok: false,
+        errorCode: error.code || 'UPDATE_ERROR',
+        errorMessage: error.message,
+      };
+    }
+
+    console.log('[remoteProfiles] ✅ Free trial marked as used');
+    return { ok: true };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Unknown error';
+    console.error('[remoteProfiles] markFreeTrialUsed exception:', message);
+    return {
+      ok: false,
+      errorCode: 'EXCEPTION',
+      errorMessage: message,
+    };
   }
 }

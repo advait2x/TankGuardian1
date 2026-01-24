@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, Image } from 'react-native';
-import { AlertTriangle, Check } from 'lucide-react-native';
+import { View, Text, StyleSheet, Image, TouchableOpacity, ScrollView } from 'react-native';
+import { AlertTriangle, Check, ChevronDown } from 'lucide-react-native';
 import Modal from '@/components/ui/Modal';
 import Button from '@/components/ui/Button';
 import QuantityStepper from '@/components/ui/QuantityStepper';
@@ -14,8 +14,8 @@ interface AddToTankSheetProps {
   visible: boolean;
   onClose: () => void;
   species: FishSpecies;
-  tank: Tank;
-  onConfirm: (quantity: number) => void;
+  tanks: Tank[];
+  onConfirm: (tankId: string, quantity: number) => void;
 }
 
 type CompatibilityLevel = 'compatible' | 'caution' | 'not-recommended';
@@ -24,12 +24,26 @@ export default function AddToTankSheet({
   visible,
   onClose,
   species,
-  tank,
+  tanks,
   onConfirm,
 }: AddToTankSheetProps) {
+  const [selectedTankId, setSelectedTankId] = useState<string | null>(null);
   const [quantity, setQuantity] = useState(1);
   const [compatibilityLevel, setCompatibilityLevel] = useState<CompatibilityLevel>('compatible');
   const [warnings, setWarnings] = useState<string[]>([]);
+  const [showTankPicker, setShowTankPicker] = useState(false);
+
+  const selectedTank = tanks?.find(t => t.id === selectedTankId);
+
+  useEffect(() => {
+    // Auto-select first tank if only one exists
+    if (tanks?.length === 1) {
+      setSelectedTankId(tanks[0].id);
+    } else if (tanks?.length > 0 && !selectedTankId) {
+      // Default to first tank if none selected
+      setSelectedTankId(tanks[0].id);
+    }
+  }, [tanks]);
 
   useEffect(() => {
     // Set default quantity based on species
@@ -42,10 +56,12 @@ export default function AddToTankSheet({
 
   useEffect(() => {
     // Run compatibility check
-    const checkResults = checkCompatibility(species, tank, quantity);
-    setWarnings(checkResults.warnings);
-    setCompatibilityLevel(checkResults.level);
-  }, [species, tank, quantity]);
+    if (selectedTank) {
+      const checkResults = checkCompatibility(species, selectedTank, quantity);
+      setWarnings(checkResults.warnings);
+      setCompatibilityLevel(checkResults.level);
+    }
+  }, [species, selectedTank, quantity]);
 
   const checkCompatibility = (
     targetSpecies: FishSpecies,
@@ -120,13 +136,20 @@ export default function AddToTankSheet({
   };
 
   const handleConfirm = async () => {
+    if (!selectedTankId) return;
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    onConfirm(quantity);
+    onConfirm(selectedTankId, quantity);
   };
 
   const handleCancel = async () => {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     onClose();
+  };
+
+  const handleSelectTank = async (tankId: string) => {
+    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setSelectedTankId(tankId);
+    setShowTankPicker(false);
   };
 
   const getCompatibilityBanner = () => {
@@ -183,51 +206,111 @@ export default function AddToTankSheet({
           </View>
         </View>
 
-        {/* Compatibility Banner */}
-        <View
-          style={[
-            styles.compatibilityBanner,
-            {
-              backgroundColor: compatibilityBanner.bgColor,
-              borderColor: compatibilityBanner.borderColor,
-            },
-          ]}
-        >
-          {compatibilityBanner.icon}
-          <Text style={[styles.compatibilityText, { color: compatibilityBanner.textColor }]}>
-            {compatibilityBanner.text}
-          </Text>
-        </View>
-
-        {/* Warnings */}
-        {warnings.length > 0 && (
-          <View style={styles.warningsContainer}>
-            {warnings.map((warning, index) => (
-              <View key={index} style={styles.warningItem}>
-                <Text style={styles.warningBullet}>•</Text>
-                <Text style={styles.warningText}>{warning}</Text>
+        {/* Tank Selector */}
+        {tanks && tanks.length > 1 ? (
+          <View>
+            <Text style={styles.sectionLabel}>Select Tank</Text>
+            <TouchableOpacity
+              style={styles.tankSelector}
+              onPress={() => setShowTankPicker(!showTankPicker)}
+            >
+              <View style={styles.tankSelectorContent}>
+                <Text style={styles.tankSelectorText}>
+                  {selectedTank?.name || 'Select a tank'}
+                </Text>
+                <Text style={styles.tankSelectorSubtext}>
+                  {selectedTank ? `${selectedTank.sizeGallons}g ${selectedTank.waterType}` : ''}
+                </Text>
               </View>
-            ))}
+              <ChevronDown size={20} color="#64748B" />
+            </TouchableOpacity>
+
+            {showTankPicker && (
+              <View style={styles.tankPicker}>
+                <ScrollView style={styles.tankPickerScroll}>
+                  {tanks.map((tank) => (
+                    <TouchableOpacity
+                      key={tank.id}
+                      style={[
+                        styles.tankOption,
+                        selectedTankId === tank.id && styles.tankOptionSelected,
+                      ]}
+                      onPress={() => handleSelectTank(tank.id)}
+                    >
+                      <View>
+                        <Text style={styles.tankOptionName}>{tank.name}</Text>
+                        <Text style={styles.tankOptionDetails}>
+                          {tank.sizeGallons}g • {tank.waterType} • {tank.fishInstances?.length || 0} fish
+                        </Text>
+                      </View>
+                      {selectedTankId === tank.id && (
+                        <Check size={20} color="#0D7377" />
+                      )}
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              </View>
+            )}
+          </View>
+        ) : (
+          <View style={styles.singleTankInfo}>
+            <Text style={styles.singleTankLabel}>Tank</Text>
+            <Text style={styles.singleTankName}>{selectedTank?.name}</Text>
+            <Text style={styles.singleTankDetails}>
+              {selectedTank?.sizeGallons}g • {selectedTank?.waterType}
+            </Text>
           </View>
         )}
 
-        {/* Quantity Selector */}
-        <View style={styles.quantitySection}>
-          <Text style={styles.quantityLabel}>Quantity</Text>
-          <QuantityStepper value={quantity} onChange={setQuantity} min={1} max={12} />
-        </View>
+        {selectedTank && (
+          <>
+            {/* Compatibility Banner */}
+            <View
+              style={[
+                styles.compatibilityBanner,
+                {
+                  backgroundColor: compatibilityBanner.bgColor,
+                  borderColor: compatibilityBanner.borderColor,
+                },
+              ]}
+            >
+              {compatibilityBanner.icon}
+              <Text style={[styles.compatibilityText, { color: compatibilityBanner.textColor }]}>
+                {compatibilityBanner.text}
+              </Text>
+            </View>
 
-        {/* Actions */}
-        <View style={styles.actions}>
-          <Button
-            title={`Add ${quantity} to Tank`}
-            onPress={handleConfirm}
-            variant="primary"
-            fullWidth
-            disabled={compatibilityLevel === 'not-recommended' && warnings.some(w => w.includes('Water type mismatch'))}
-          />
-          <Button title="Cancel" onPress={handleCancel} variant="outline" fullWidth />
-        </View>
+            {/* Warnings */}
+            {warnings.length > 0 && (
+              <View style={styles.warningsContainer}>
+                {warnings.map((warning, index) => (
+                  <View key={index} style={styles.warningItem}>
+                    <Text style={styles.warningBullet}>•</Text>
+                    <Text style={styles.warningText}>{warning}</Text>
+                  </View>
+                ))}
+              </View>
+            )}
+
+            {/* Quantity Selector */}
+            <View style={styles.quantitySection}>
+              <Text style={styles.quantityLabel}>Quantity</Text>
+              <QuantityStepper value={quantity} onChange={setQuantity} min={1} max={12} />
+            </View>
+
+            {/* Actions */}
+            <View style={styles.actions}>
+              <Button
+                title={`Add ${quantity} to Tank`}
+                onPress={handleConfirm}
+                variant="primary"
+                fullWidth
+                disabled={compatibilityLevel === 'not-recommended' && warnings.some(w => w.includes('Water type mismatch'))}
+              />
+              <Button title="Cancel" onPress={handleCancel} variant="outline" fullWidth />
+            </View>
+          </>
+        )}
       </View>
     </Modal>
   );
@@ -310,6 +393,90 @@ const styles = StyleSheet.create({
   actions: {
     gap: 10,
     marginTop: 4,
+  },
+  sectionLabel: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#2C3E50',
+    marginBottom: 8,
+  },
+  tankSelector: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: 'rgba(78, 205, 196, 0.05)',
+    borderWidth: 1,
+    borderColor: 'rgba(78, 205, 196, 0.2)',
+    borderRadius: 12,
+    padding: 14,
+  },
+  tankSelectorContent: {
+    flex: 1,
+  },
+  tankSelectorText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#1A252F',
+    marginBottom: 2,
+  },
+  tankSelectorSubtext: {
+    fontSize: 13,
+    color: '#64748B',
+  },
+  tankPicker: {
+    marginTop: 8,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    maxHeight: 200,
+  },
+  tankPickerScroll: {
+    maxHeight: 200,
+  },
+  tankOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E2E8F0',
+  },
+  tankOptionSelected: {
+    backgroundColor: 'rgba(78, 205, 196, 0.05)',
+  },
+  tankOptionName: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#1A252F',
+    marginBottom: 2,
+  },
+  tankOptionDetails: {
+    fontSize: 13,
+    color: '#64748B',
+  },
+  singleTankInfo: {
+    backgroundColor: 'rgba(78, 205, 196, 0.05)',
+    borderWidth: 1,
+    borderColor: 'rgba(78, 205, 196, 0.2)',
+    borderRadius: 12,
+    padding: 14,
+  },
+  singleTankLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#64748B',
+    marginBottom: 4,
+  },
+  singleTankName: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#1A252F',
+    marginBottom: 2,
+  },
+  singleTankDetails: {
+    fontSize: 13,
+    color: '#64748B',
   },
 });
 

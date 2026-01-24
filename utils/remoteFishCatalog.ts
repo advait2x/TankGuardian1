@@ -22,6 +22,12 @@ export interface RemoteFishSpecies {
   temperament: string;
   care_level: string;
   image_key?: string;
+  temp_min?: number;
+  temp_max?: number;
+  ph_min?: number;
+  ph_max?: number;
+  care_notes?: string;
+  care_notes_short?: string;
 }
 
 export interface FishListResult {

@@ -61,6 +61,11 @@ export interface FishSpecies {
   imageUrl: string;
   color: string;
   image_key?: string | null; // Supabase Storage key for fish image
+  tempMin?: number; // Minimum temperature in °F
+  tempMax?: number; // Maximum temperature in °F
+  phMin?: number; // Minimum pH
+  phMax?: number; // Maximum pH
+  careNotesShort?: string; // Short care notes for My Tank view
 }
 
 export interface FishInstance {

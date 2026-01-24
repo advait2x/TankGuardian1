@@ -6,8 +6,8 @@ This Supabase Edge Function performs AI-powered disease detection on fish images
 
 Required in Supabase Edge Functions settings:
 
-- `SUPABASE_URL` - Auto-provided by Supabase
-- `SUPABASE_SERVICE_ROLE_KEY` - Auto-provided by Supabase  
+- `PROJECT_URL` - Supabase project URL
+- `SERVICE_ROLE_KEY` - Supabase service role key  
 - `SUPABASE_ANON_KEY` - Auto-provided by Supabase
 - `OPENAI_API_KEY` - Your OpenAI API key (optional, returns stub data if missing)
 

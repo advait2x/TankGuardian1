@@ -25,24 +25,39 @@ async function loadCatalog(): Promise<FishSpecies[]> {
     try {
       const remoteCatalog = await getFishCatalog({ limit: 100 });
       
-      // Merge remote data into mock data
+      // Start with all remote catalog entries
+      const remoteMap = new Map<string, FishSpecies>();
+      remoteCatalog.forEach(rf => {
+        const normalizedSlug = normalizeSpeciesSlug(rf.id);
+        if (normalizedSlug) {
+          remoteMap.set(normalizedSlug, rf);
+        }
+      });
+      
+      // Merge mock data: prefer remote if exists, otherwise use mock
       const enriched = mockFishSpecies.map(mockFish => {
         const normalizedSlug = normalizeSpeciesSlug(mockFish.id);
-        const remoteFish = remoteCatalog.find(rf => 
-          normalizeSpeciesSlug(rf.id) === normalizedSlug
-        );
+        const remoteFish = normalizedSlug ? remoteMap.get(normalizedSlug) : null;
         
-        if (remoteFish && remoteFish.image_key) {
-          return { ...mockFish, image_key: remoteFish.image_key };
+        if (remoteFish) {
+          // Use remote data but keep mock data as fallback for missing fields
+          remoteMap.delete(normalizedSlug); // Remove from map so we don't duplicate
+          return remoteFish;
         }
         
         return mockFish;
       });
       
-      catalogCache = enriched;
-      return enriched;
+      // Add any remote species that weren't in mock data
+      const additionalRemote = Array.from(remoteMap.values());
+      const combined = [...enriched, ...additionalRemote];
+      
+      catalogCache = combined;
+      console.log(`[SpeciesLookup] Loaded ${combined.length} species (${enriched.length} from mock, ${additionalRemote.length} additional from remote)`);
+      return combined;
     } catch (error) {
       // Fall back to mock data if remote fails
+      console.warn('[SpeciesLookup] Remote catalog failed, using mock data only:', error);
       catalogCache = mockFishSpecies;
       return mockFishSpecies;
     }

@@ -79,8 +79,13 @@ export default function SignupScreen() {
     if (!validate()) return;
     
     setIsLoading(true);
+    console.log('[Signup] Starting signup process...');
+    console.log('[Signup] Email:', email.trim());
+    console.log('[Signup] Supabase client exists:', !!supabase);
+    
     try {
       // Sign up with Supabase
+      console.log('[Signup] Calling supabase.auth.signUp...');
       const { data, error } = await supabase.auth.signUp({
         email: email.trim(),
         password: password,
@@ -91,7 +96,12 @@ export default function SignupScreen() {
         },
       });
 
+      console.log('[Signup] Response received');
+      console.log('[Signup] Error:', error);
+      console.log('[Signup] Data:', data);
+
       if (error) {
+        console.error('[Signup] Supabase error:', error.message, error.status);
         showToast(error.message || 'Signup failed. Please try again.', 'error');
         return;
       }
@@ -99,9 +109,19 @@ export default function SignupScreen() {
       console.log('[Signup] Sign up successful, user:', data.user?.id);
       showToast('Account created! Let\'s set up your tank.', 'success');
       // Navigation will happen via the useEffect watching session
-    } catch (error) {
-      console.error('[Signup] Exception:', error);
-      showToast('Signup failed. Please try again.', 'error');
+    } catch (error: any) {
+      console.error('[Signup] Exception caught:', error);
+      console.error('[Signup] Exception type:', error?.constructor?.name);
+      console.error('[Signup] Exception message:', error?.message);
+      console.error('[Signup] Exception stack:', error?.stack);
+      
+      const errorMessage = error?.message || 'Signup failed. Please try again.';
+      showToast(
+        errorMessage.includes('Network') 
+          ? 'Network error. Please check your internet connection.' 
+          : errorMessage, 
+        'error'
+      );
     } finally {
       setIsLoading(false);
     }

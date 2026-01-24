@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect, ReactNode } from
 import { Session, User, AuthError } from '@supabase/supabase-js';
 import { supabase } from '@/utils/supabase';
 import * as RemoteProfiles from '@/utils/remoteProfiles';
+import { ProfileData } from '@/utils/remoteProfiles';
 
 type OnboardingStatus = 'unknown' | 'needs_onboarding' | 'complete' | 'unknown_error';
 
@@ -11,7 +12,7 @@ interface AuthContextType {
   loading: boolean;
   profileLoading: boolean;
   onboardingStatus: OnboardingStatus;
-  profile: { id: string; has_completed_onboarding: boolean } | null;
+  profile: ProfileData | null;
   refreshProfile: () => Promise<void>;
   setOnboardingComplete: () => Promise<void>;
   signOut: () => Promise<void>;
@@ -46,7 +47,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const [loading, setLoading] = useState(true);
   const [profileLoading, setProfileLoading] = useState(false);
   const [onboardingStatus, setOnboardingStatus] = useState<OnboardingStatus>('unknown');
-  const [profile, setProfile] = useState<{ id: string; has_completed_onboarding: boolean } | null>(null);
+  const [profile, setProfile] = useState<ProfileData | null>(null);
   const [loadedUserId, setLoadedUserId] = useState<string | null>(null);
 
   // Fetch profile and determine onboarding status

@@ -1,216 +1,365 @@
 /**
  * diseaseDetection.ts
  * 
- * Main disease detection logic:
- * 1. Upload image to Supabase Storage
- * 2. Create disease_checks record
- * 3. Call external API (or stub)
- * 4. Update record with results
+ * Disease detection utilities for the Expo Router app.
+ * Handles image upload, disease check creation, and AI analysis orchestration.
  */
 
-import { supabase } from './supabase';
 import * as FileSystem from 'expo-file-system';
-import {
-  createDiseaseCheckPlaceholder,
-  updateDiseaseCheckResult,
-} from './remoteDiseaseChecks';
+import { decode } from 'base64-arraybuffer';
+import { supabase } from './supabase';
 
-/**
- * Generate unique filename for disease image
- */
-function generateImageFilename(): string {
-  const timestamp = Date.now();
-  const random = Math.random().toString(36).substring(2, 8);
-  return `${timestamp}-${random}.jpg`;
-}
-
-/**
- * Convert base64 string to ArrayBuffer
- */
-function base64ToArrayBuffer(base64: string): ArrayBuffer {
-  const binaryString = atob(base64);
-  const bytes = new Uint8Array(binaryString.length);
-  for (let i = 0; i < binaryString.length; i++) {
-    bytes[i] = binaryString.charCodeAt(i);
-  }
-  return bytes.buffer;
-}
-
-/**
- * Upload image to Supabase Storage
- */
-async function uploadImageToStorage({
-  localUri,
-  userId,
-}: {
+export interface UploadDiseaseImageParams {
   localUri: string;
   userId: string;
-}): Promise<{ ok: boolean; path?: string; error?: string }> {
+}
+
+export interface UploadDiseaseImageResult {
+  imagePath: string;
+}
+
+export interface CreateDiseaseCheckParams {
+  ownerId: string;
+  tankId: string | null;
+  imagePath: string;
+}
+
+export interface CreateDiseaseCheckResult {
+  id: string;
+}
+
+export interface RunDiseaseScanParams {
+  localUri: string;
+  tankId: string | null;
+  onStep?: (step: string) => void;
+}
+
+export interface RunDiseaseScanResult {
+  id: string;
+  result: any;
+}
+
+/**
+ * Generate a unique ID for file naming
+ */
+function generateUniqueId(): string {
+  const timestamp = Date.now();
+  const random = Math.random().toString(36).substring(2, 15);
+  return `${timestamp}-${random}`;
+}
+
+/**
+ * Upload disease image to Supabase storage
+ * 
+ * Uploads to bucket 'disease-images' with path ${userId}/${uuid}.ext
+ * Uses expo-file-system to read as base64, then converts to ArrayBuffer
+ */
+export async function uploadDiseaseImage({
+  localUri,
+  userId,
+}: UploadDiseaseImageParams): Promise<UploadDiseaseImageResult> {
   try {
-    // Read file as base64
+    // Generate unique filename with extension detection
+    const uuid = generateUniqueId();
+    const extension = localUri.split('.').pop()?.toLowerCase() || 'jpg';
+    const fileName = `${uuid}.${extension}`;
+    const storagePath = `${userId}/${fileName}`;
+
+    // Determine content type based on extension
+    let contentType = 'image/jpeg';
+    if (extension === 'png') contentType = 'image/png';
+    else if (extension === 'heic' || extension === 'heif') contentType = 'image/heic';
+    else if (extension === 'webp') contentType = 'image/webp';
+
+    // Read image as base64 using expo-file-system
+    console.log('[uploadDiseaseImage] Reading image from:', localUri);
     const base64 = await FileSystem.readAsStringAsync(localUri, {
-      encoding: 'base64',
+      encoding: FileSystem.EncodingType.Base64,
     });
 
-    const filename = generateImageFilename();
-    const storagePath = `${userId}/${filename}`;
-
     // Convert base64 to ArrayBuffer
-    const arrayBuffer = base64ToArrayBuffer(base64);
+    const arrayBuffer = decode(base64);
+    
+    // Log and validate byte length
+    console.log('[uploadDiseaseImage] ArrayBuffer byteLength:', arrayBuffer.byteLength);
+    if (arrayBuffer.byteLength === 0) {
+      throw new Error('Image file is empty (0 bytes)');
+    }
 
-    // Upload to storage
-    const { error: uploadError } = await supabase.storage
+    // Upload to Supabase storage
+    const { data, error } = await supabase.storage
       .from('disease-images')
       .upload(storagePath, arrayBuffer, {
-        contentType: 'image/jpeg',
+        contentType,
         upsert: false,
       });
 
-    if (uploadError) {
-      console.error('[DiseaseDetection] Upload error:', uploadError.message);
-      return { ok: false, error: uploadError.message };
+    if (error) {
+      let errorMsg = `Storage upload failed: ${error.message}`;
+      if ((error as any).details) errorMsg += ` | Details: ${(error as any).details}`;
+      if ((error as any).hint) errorMsg += ` | Hint: ${(error as any).hint}`;
+      throw new Error(errorMsg);
     }
 
-    return { ok: true, path: storagePath };
-  } catch (err) {
-    const message = err instanceof Error ? err.message : 'Unknown error';
-    console.error('[DiseaseDetection] Upload exception:', message);
-    return { ok: false, error: message };
+    if (!data) {
+      throw new Error('No data returned from storage upload');
+    }
+
+    return { imagePath: data.path };
+  } catch (error) {
+    console.error('[uploadDiseaseImage] Error:', error);
+    throw error;
   }
 }
 
 /**
- * Call Supabase edge function to run disease detection AI
+ * Create a new disease check record
+ * 
+ * Inserts into public.disease_checks with initial status 'processing'
  */
-async function callDiseaseDetectionEdgeFunction({
-  diseaseCheckId,
-}: {
-  diseaseCheckId: string;
-}): Promise<{
-  ok: boolean;
-  result?: {
-    likelyIssue: string | null;
-    confidence: number;
-    severity: string;
-    observations: string[];
-    advice: string[];
-    disclaimer: string;
-    model?: string;
-  };
-  error?: string;
-}> {
+export async function createDiseaseCheck({
+  ownerId,
+  tankId,
+  imagePath,
+}: CreateDiseaseCheckParams): Promise<CreateDiseaseCheckResult> {
   try {
-    const { data, error } = await supabase.functions.invoke('disease-scan', {
-      body: {
-        diseaseCheckId,
-      },
-    });
+    // Build insert payload with explicit null handling
+    const payload = {
+      owner_id: ownerId,
+      tank_id: tankId ?? null,
+      image_path: imagePath,
+      result: { status: 'processing' },
+    };
+
+    // Defensive logging (keys only, no sensitive data)
+    console.log('[createDiseaseCheck] Inserting with keys:', Object.keys(payload));
+
+    const { data, error } = await supabase
+      .from('disease_checks')
+      .insert(payload)
+      .select('id')
+      .single();
 
     if (error) {
-      console.error('[DiseaseDetection] Edge function error:', error.message);
-      return { ok: false, error: error.message };
+      let errorMsg = `Failed to create disease check: ${error.message}`;
+      if (error.details) errorMsg += ` | Details: ${error.details}`;
+      if (error.hint) errorMsg += ` | Hint: ${error.hint}`;
+      throw new Error(errorMsg);
     }
 
-    if (!data || !data.ok) {
-      return { ok: false, error: data?.error || 'Unknown error from edge function' };
+    if (!data) {
+      throw new Error('No data returned from disease check creation');
     }
 
-    return { ok: true, result: data.result };
-  } catch (err) {
-    const message = err instanceof Error ? err.message : 'Unknown error';
-    console.error('[DiseaseDetection] Edge function exception:', message);
-    return { ok: false, error: message };
+    console.log('[createDiseaseCheck] Created disease check with id:', data.id);
+    return { id: data.id };
+  } catch (error) {
+    console.error('[createDiseaseCheck] Error:', error);
+    throw error;
   }
 }
 
 /**
- * Run complete disease detection workflow
+ * Fetch a disease check by ID
  */
-export async function runDiseaseDetection({
+export async function fetchDiseaseCheck(id: string) {
+  try {
+    const { data, error } = await supabase
+      .from('disease_checks')
+      .select('*')
+      .eq('id', id)
+      .single();
+
+    if (error) {
+      let errorMsg = `Failed to fetch disease check: ${error.message}`;
+      if (error.details) errorMsg += ` | Details: ${error.details}`;
+      if (error.hint) errorMsg += ` | Hint: ${error.hint}`;
+      throw new Error(errorMsg);
+    }
+
+    if (!data) {
+      throw new Error('Disease check not found');
+    }
+
+    return data;
+  } catch (error) {
+    console.error('[fetchDiseaseCheck] Error:', error);
+    throw error;
+  }
+}
+
+/**
+ * Orchestrate the full disease scan workflow with polling
+ * 
+ * Steps:
+ * 0. Verify user is authenticated
+ * 1. Upload image to storage
+ * 2. Create disease check record with status 'processing'
+ * 3. Invoke 'disease-scan' edge function (async)
+ * 4. Poll database every 1s for up to 30s until status is 'complete' or 'error'
+ * 5. Return ID and result
+ * 
+ * Polling ensures we get the final result even if the edge function takes time.
+ * Reports progress via onStep callback throughout the process.
+ */
+export async function runDiseaseScan({
   localUri,
   tankId,
-  sessionUserId,
-  onProgress,
-}: {
-  localUri: string;
-  tankId?: string;
-  sessionUserId: string;
-  onProgress?: (stage: 'uploading' | 'analyzing' | 'complete' | 'error') => void;
-}): Promise<{
-  ok: boolean;
-  result?: {
-    id: string;
-    likelyIssue: string;
-    confidence: number;
-    symptoms: string[];
-    treatment: string[];
-    advice: string;
-    severity: string;
-  };
-  error?: string;
-}> {
-  let diseaseCheckId: string | undefined;
-
+  onStep,
+}: RunDiseaseScanParams): Promise<RunDiseaseScanResult> {
   try {
+    // Step 0: Verify authentication and get user
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    
+    if (authError) {
+      let errorMsg = `Authentication failed: ${authError.message}`;
+      if ((authError as any).details) errorMsg += ` | Details: ${(authError as any).details}`;
+      if ((authError as any).hint) errorMsg += ` | Hint: ${(authError as any).hint}`;
+      throw new Error(errorMsg);
+    }
+    
+    if (!user) {
+      throw new Error('Not signed in');
+    }
+
+    console.log('[runDiseaseScan] Authenticated user:', user.id);
+
     // Step 1: Upload image
-    onProgress?.('uploading');
-    const uploadResult = await uploadImageToStorage({
+    onStep?.('Uploading image...');
+    const { imagePath } = await uploadDiseaseImage({
       localUri,
-      userId: sessionUserId,
+      userId: user.id,
     });
 
-    if (!uploadResult.ok || !uploadResult.path) {
-      onProgress?.('error');
-      return { ok: false, error: uploadResult.error || 'Upload failed' };
-    }
-
-    // Step 2: Create disease_checks record
-    const createResult = await createDiseaseCheckPlaceholder({
-      tankId,
-      ownerId: sessionUserId,
-      imagePath: uploadResult.path,
+    // Step 2: Create disease check record
+    onStep?.('Creating disease check...');
+    const { id } = await createDiseaseCheck({
+      ownerId: user.id,
+      tankId: tankId || null,
+      imagePath,
     });
 
-    if (!createResult.ok || !createResult.id) {
-      onProgress?.('error');
-      return { ok: false, error: createResult.error || 'Failed to create record' };
+    // Step 3: Invoke edge function and wait for response
+    onStep?.('Analyzing image...');
+    console.log('[runDiseaseScan] invoking edge function disease-scan for', id);
+    
+    // Get session token and pass it explicitly (RN/Expo doesn't always include auth automatically)
+    const { data: sessionData, error: sessionErr } = await supabase.auth.getSession();
+    if (sessionErr || !sessionData.session) {
+      throw new Error('Not authenticated');
     }
 
-    diseaseCheckId = createResult.id;
+    const accessToken = sessionData.session.access_token;
 
-    // Step 3: Call edge function for AI analysis
-    onProgress?.('analyzing');
-    const apiResult = await callDiseaseDetectionEdgeFunction({
-      diseaseCheckId,
-    });
+    try {
+      const { data, error } = await supabase.functions.invoke('disease-scan', {
+        body: { diseaseCheckId: id },
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      
+      console.log('[runDiseaseScan] invoke returned', { data, error });
+      
+      if (error) throw error;
+      
+      // Check if the response indicates an error
+      if (data && !data.ok && data.error) {
+        throw new Error(data.error);
+      }
+    } catch (e: any) {
+      console.error('[runDiseaseScan] Edge function error:', e);
+      
+      const msg = e?.message ?? 'Edge function failed';
 
-    if (!apiResult.ok || !apiResult.result) {
-      // Edge function already updated record with error
-      onProgress?.('error');
-      return { ok: false, error: apiResult.error || 'Analysis failed' };
+      await supabase
+        .from('disease_checks')
+        .update({
+          status: 'failed',
+          error_message: msg,
+          completed_at: new Date().toISOString(),
+          result: { status: 'error', error: msg, updatedAt: new Date().toISOString() },
+        })
+        .eq('id', id);
+
+      onStep?.('Analysis failed');
+      throw new Error(`Disease scan failed: ${msg}`);
     }
 
-    // Step 4: Record already updated by edge function
-    onProgress?.('complete');
+    // Step 4: Poll for result (1s intervals, 30s timeout)
+    const pollInterval = 1000; // 1 second
+    const maxPolls = 30; // 30 seconds total
+    let pollCount = 0;
+    let latestCheck: any = null;
 
+    while (pollCount < maxPolls) {
+      // Wait before polling (except first check which is immediate)
+      if (pollCount > 0) {
+        await new Promise(resolve => setTimeout(resolve, pollInterval));
+      }
+
+      try {
+        latestCheck = await fetchDiseaseCheck(id);
+        const status = latestCheck.result?.status;
+
+        if (status === 'complete') {
+          onStep?.('Analysis complete!');
+          return {
+            id,
+            result: latestCheck.result,
+          };
+        }
+
+        if (status === 'error') {
+          onStep?.('Analysis failed');
+          // Return the error result so UI can display it
+          return {
+            id,
+            result: latestCheck.result,
+          };
+        }
+
+        // Still processing, update step message with progress indicator
+        const dots = '.'.repeat((pollCount % 3) + 1);
+        onStep?.(`Analyzing image${dots}`);
+      } catch (pollError) {
+        console.error('[runDiseaseScan] Poll error:', pollError);
+        // Continue polling even if one fetch fails
+      }
+
+      pollCount++;
+    }
+
+    // Timeout: update database and return error
+    console.warn('[runDiseaseScan] Polling timeout after 30s');
+    onStep?.('Analysis timed out');
+    
+    const timeoutMessage = 'Polling timeout after 30s';
+    
+    // Update database to mark as failed
+    await supabase
+      .from('disease_checks')
+      .update({
+        status: 'failed',
+        error_message: timeoutMessage,
+        completed_at: new Date().toISOString(),
+        result: { 
+          status: 'error', 
+          error: timeoutMessage,
+          updatedAt: new Date().toISOString() 
+        },
+      })
+      .eq('id', id);
+    
+    // Return error result so UI can display it
     return {
-      ok: true,
+      id,
       result: {
-        id: diseaseCheckId,
-        likelyIssue: apiResult.result.likelyIssue || 'Unknown',
-        confidence: apiResult.result.confidence,
-        // Map new fields to old format for UI compatibility
-        symptoms: apiResult.result.observations || [],
-        treatment: apiResult.result.advice || [],
-        advice: apiResult.result.disclaimer || '',
-        severity: apiResult.result.severity,
+        status: 'error',
+        error: timeoutMessage,
+        updatedAt: new Date().toISOString(),
       },
     };
-  } catch (err) {
-    const message = err instanceof Error ? err.message : 'Unknown error';
-    console.error('[DiseaseDetection] Exception:', message);
-
-    onProgress?.('error');
-    return { ok: false, error: message };
+  } catch (error) {
+    console.error('[runDiseaseScan] Error:', error);
+    throw error;
   }
 }

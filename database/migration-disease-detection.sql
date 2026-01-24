@@ -50,6 +50,7 @@ ALTER TABLE public.disease_checks ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Users can read own disease checks" ON public.disease_checks;
 DROP POLICY IF EXISTS "Users can insert own disease checks" ON public.disease_checks;
 DROP POLICY IF EXISTS "Users can update own disease checks" ON public.disease_checks;
+DROP POLICY IF EXISTS "Users can delete own disease checks" ON public.disease_checks;
 
 -- Policy: Users can read their own disease checks
 CREATE POLICY "Users can read own disease checks"
@@ -68,6 +69,12 @@ CREATE POLICY "Users can insert own disease checks"
 CREATE POLICY "Users can update own disease checks"
   ON public.disease_checks
   FOR UPDATE
+  USING (auth.uid() = owner_id);
+
+-- Policy: Users can delete their own disease checks
+CREATE POLICY "Users can delete own disease checks"
+  ON public.disease_checks
+  FOR DELETE
   USING (auth.uid() = owner_id);
 
 -- ============================================================================

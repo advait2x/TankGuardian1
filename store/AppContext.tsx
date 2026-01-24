@@ -109,10 +109,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const userId = session.user.id;
       console.log('[Auth] Session user id:', userId);
 
-      // Ensure profile exists, then get it (NEVER sets has_completed_onboarding to false)
-      const result = await RemoteProfiles.ensureProfile(userId);
+      // Get profile with premium data
+      const result = await RemoteProfiles.getMyProfile();
       
-      if (result.profile) {
+      if (result.ok && result.data) {
+        // Load premium status from Supabase
+        setIsPremiumState(result.data.is_premium);
+        setHasUsedFreeTrial(result.data.has_used_free_trial);
+        
         // Create user object from profile data
         const u: User = {
           id: authUser.id,
@@ -120,18 +124,22 @@ export function AppProvider({ children }: { children: ReactNode }) {
           displayName: (authUser.user_metadata?.display_name as string) ||
             (authUser.email ? authUser.email.split('@')[0] : 'User'),
           avatarUrl: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100&q=80',
-          isPremium: false,
+          isPremium: result.data.is_premium,
           role: 'user',
           createdAt: new Date().toISOString(),
-          hasCompletedOnboarding: result.profile.has_completed_onboarding,
+          hasCompletedOnboarding: result.data.has_completed_onboarding,
         };
 
         setCurrentUser(u);
-        // hasCompletedOnboarding: REMOVED - use AuthContext.onboardingStatus
-        console.log('[Profile] Loaded { id:', result.profile.id, ', has_completed_onboarding:', result.profile.has_completed_onboarding, '}');
+        console.log('[Profile] Loaded with premium status:', {
+          id: result.data.id,
+          has_completed_onboarding: result.data.has_completed_onboarding,
+          is_premium: result.data.is_premium,
+          has_used_free_trial: result.data.has_used_free_trial,
+        });
       } else {
         // Failed to load profile - keep as null (unknown), do NOT default to false
-        console.error('[Profile] Failed to load, RLS or network error:', result.error);
+        console.error('[Profile] Failed to load, RLS or network error:', result.errorMessage);
         console.error('[Profile] Creating fallback user without profile data');
         const u: User = {
           id: authUser.id,
@@ -145,7 +153,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
           hasCompletedOnboarding: false,
         };
         setCurrentUser(u);
-        // hasCompletedOnboarding: REMOVED - use AuthContext.onboardingStatus
       }
 
       setProfileLoading(false);
@@ -272,12 +279,26 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (currentUser) setCurrentUser({ ...currentUser, ...updates });
   };
 
-  const setPremium = (value: boolean) => {
+  const setPremium = async (value: boolean) => {
     setIsPremiumState(value);
     if (currentUser) setCurrentUser({ ...currentUser, isPremium: value });
+    
+    // Persist to Supabase
+    const result = await RemoteProfiles.setPremiumStatus(value);
+    if (!result.ok) {
+      console.error('[AppContext] Failed to persist premium status:', result.errorMessage);
+    }
   };
 
-  const useFreeTrial = () => setHasUsedFreeTrial(true);
+  const useFreeTrial = async () => {
+    setHasUsedFreeTrial(true);
+    
+    // Persist to Supabase
+    const result = await RemoteProfiles.markFreeTrialUsed();
+    if (!result.ok) {
+      console.error('[AppContext] Failed to persist free trial usage:', result.errorMessage);
+    }
+  };
   const incrementDiseaseCheck = () => setDiseaseCheckCount(prev => prev + 1);
 
   // Tank Actions

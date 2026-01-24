@@ -10,7 +10,9 @@ import { supabase } from './supabase';
 export interface AquascapeLayoutItem {
   id: string;
   type: 'rock' | 'wood' | 'plant';
-  assetKey: string;
+  assetKey: string; // Legacy: emoji-based asset key (e.g., 'rock-1')
+  catalogItemSlug?: string; // NEW: Reference to scape_flora or scape_hardscape slug
+  catalogItemType?: 'flora' | 'hardscape'; // NEW: Which catalog table
   x: number;
   y: number;
   scale: number;

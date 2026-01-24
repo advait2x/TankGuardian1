@@ -21,7 +21,7 @@ function isValidUUID(str: string): boolean {
 export interface RemoteWaterLog {
   id: string;
   tank_id: string;
-  user_id: string;
+  owner_id: string;
   ph?: number | null;
   temperature?: number | null;  // Database column: temperature (stores Fahrenheit consistently)
   ammonia_ppm?: number | null;
@@ -57,8 +57,8 @@ export interface ListWaterLogsParams {
 
 /**
  * Create a new water parameter log
- * REQUIRES authenticated session - user_id is NOT NULL in database
- * Database columns: id, user_id, tank_id, ph, temperature, ammonia_ppm, nitrite_ppm, nitrate_ppm, notes, created_at
+ * REQUIRES authenticated session - owner_id is set by RLS policy (auth.uid())
+ * Database columns: id, owner_id, tank_id, ph, temperature, ammonia_ppm, nitrite_ppm, nitrate_ppm, notes, created_at
  */
 export async function createWaterLog(params: CreateWaterLogParams): Promise<CreateWaterLogResult> {
   if (!isSupabaseConfigured()) {
@@ -91,7 +91,7 @@ export async function createWaterLog(params: CreateWaterLogParams): Promise<Crea
 
   try {
     // Map to exact database column names
-    // Database schema: id, user_id, tank_id, ph, temperature, ammonia_ppm, nitrite_ppm, nitrate_ppm, notes, created_at
+    // Database schema: id, owner_id, tank_id, ph, temperature, ammonia_ppm, nitrite_ppm, nitrate_ppm, notes, created_at
     const insertData = {
       tank_id: params.tankId,
       ph: params.ph ?? null,

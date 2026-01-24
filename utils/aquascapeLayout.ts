@@ -72,6 +72,8 @@ export function normalizeLayout(
       id: item.id || `item-${Date.now()}-${Math.random()}`,
       type: item.type || 'rock',
       assetKey: item.assetKey || 'rock-1',
+      catalogItemSlug: item.catalogItemSlug,
+      catalogItemType: item.catalogItemType,
       x,
       y,
       scale,
@@ -92,6 +94,8 @@ export interface MappedLayoutItem {
   id: string;
   type: string;
   assetKey: string;
+  catalogItemSlug?: string;
+  catalogItemType?: 'flora' | 'hardscape';
   pixelX: number;
   pixelY: number;
   pixelScale: number;
@@ -181,6 +185,8 @@ export function mapLayoutToContainer(
       id: item.id,
       type: item.type,
       assetKey: item.assetKey,
+      catalogItemSlug: item.catalogItemSlug,
+      catalogItemType: item.catalogItemType,
       pixelX: clampedPx,
       pixelY: clampedPy,
       pixelScale: itemScale, // Keep original scale, don't multiply by container scale

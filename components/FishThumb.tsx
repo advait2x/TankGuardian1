@@ -16,6 +16,9 @@ export default function FishThumb({ imageKey, size = 44, style }: FishThumbProps
   const uri = getCatalogPublicUrl(imageKey);
   
   if (!uri) {
+    if (__DEV__ && imageKey) {
+      console.warn('[FishThumb] No URI generated for imageKey:', imageKey);
+    }
     return null;
   }
   
@@ -24,8 +27,11 @@ export default function FishThumb({ imageKey, size = 44, style }: FishThumbProps
       source={{ uri }}
       style={[{ width: size, height: size }, style]}
       resizeMode="contain"
-      onError={() => {
-        // Silently fail - no crash, no retry, no state updates
+      onError={(error) => {
+        // Silently fail - log as warning to avoid error pop-ups
+        if (__DEV__) {
+          console.warn('[FishThumb] Failed to load image:', uri.split('/').pop());
+        }
       }}
     />
   );

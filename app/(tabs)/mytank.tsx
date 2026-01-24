@@ -10,7 +10,9 @@ import {
   FlatList,
   KeyboardAvoidingView,
   Platform,
-  Keyboard
+  Keyboard,
+  Alert,
+  InteractionManager
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useFocusEffect } from 'expo-router';
@@ -58,7 +60,7 @@ import { useToast } from '@/components/ui/Toast';
 import { fishSpecies, generateId } from '@/data/mockData';
 import { getFishCatalog } from '@/utils/fishCatalogAdapter';
 import { saveWaterLog, fetchWaterLogs } from '@/utils/waterLogsAdapter';
-import { runDiseaseDetection } from '@/utils/diseaseDetection';
+import { runDiseaseScan } from '@/utils/diseaseDetection';
 import { fetchDiseaseCheckHistory } from '@/utils/remoteDiseaseChecks';
 import { preloadCatalog, getSpeciesBySlugSync } from '@/utils/tankSpeciesLookup';
 import { getLatestAquascapeLayout, AquascapeLayoutItem } from '@/utils/aquascapeRemote';
@@ -85,6 +87,9 @@ function AquascapeItem({ item, baseSize = 40 }: { item: MappedLayoutItem; baseSi
   // Size already computed by mapping utility
   const finalSize = baseSize * item.pixelScale;
   
+  // Check if this is a catalog item with an image
+  const hasCatalogImage = !!item.catalogItemSlug && !!item.catalogItemType && !!item.assetKey;
+  
   return (
     <View
       style={[
@@ -102,7 +107,15 @@ function AquascapeItem({ item, baseSize = 40 }: { item: MappedLayoutItem; baseSi
       ]}
       pointerEvents="none"
     >
-      <Text style={{ fontSize: finalSize * 0.7 }}>{asset.emoji}</Text>
+      {hasCatalogImage ? (
+        <FishThumb
+          imageKey={item.assetKey}
+          size={finalSize}
+          style={{ borderRadius: 4 }}
+        />
+      ) : (
+        <Text style={{ fontSize: finalSize * 0.7 }}>{asset.emoji}</Text>
+      )}
     </View>
   );
 }
@@ -221,10 +234,17 @@ export default function MyTankScreen() {
   const [diseaseAnalysisResult, setDiseaseAnalysisResult] = useState<any>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [detectionStage, setDetectionStage] = useState<'uploading' | 'analyzing' | 'complete' | 'error'>('uploading');
+  const [currentStepMessage, setCurrentStepMessage] = useState<string>('');
+  const [showPhotoPickerSheet, setShowPhotoPickerSheet] = useState(false);
   const [showDiseaseHistory, setShowDiseaseHistory] = useState(false);
   const [diseaseHistory, setDiseaseHistory] = useState<any[]>([]);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
+  const [selectedHistoryCheck, setSelectedHistoryCheck] = useState<any>(null);
+  const [showFailedScans, setShowFailedScans] = useState(false);
   const { showMascot, hideMascot } = useMascot();
+  
+  // Mounted ref to track component lifecycle
+  const isMounted = useRef(true);
   
   // Fish catalog state
   const [fishCatalog, setFishCatalog] = useState<FishSpecies[]>([]);
@@ -336,7 +356,21 @@ export default function MyTankScreen() {
     };
   }, []);
 
-  // Load disease history when opening history view
+  // ImagePicker diagnostics
+  useEffect(() => {
+    console.log('[PickerDiag] ImagePicker keys:', Object.keys(ImagePicker ?? {}));
+    console.log('[PickerDiag] has launchCameraAsync:', typeof ImagePicker.launchCameraAsync);
+    console.log('[PickerDiag] has launchImageLibraryAsync:', typeof ImagePicker.launchImageLibraryAsync);
+  }, []);
+
+  // Cleanup mounted ref
+  useEffect(() => {
+    return () => {
+      isMounted.current = false;
+    };
+  }, []);
+
+  // Load disease history when opening history view or toggle changes
   useEffect(() => {
     if (!showDiseaseHistory || !session?.user?.id) {
       return;
@@ -351,6 +385,7 @@ export default function MyTankScreen() {
           ownerId: session.user.id,
           tankId: selectedTankId || undefined,
           limit: 20,
+          includeFailedScans: showFailedScans,
         });
         if (mounted && result.ok) {
           setDiseaseHistory(result.checks || []);
@@ -374,7 +409,7 @@ export default function MyTankScreen() {
     return () => {
       mounted = false;
     };
-  }, [showDiseaseHistory, session?.user?.id, selectedTankId]);
+  }, [showDiseaseHistory, session?.user?.id, selectedTankId, showFailedScans]);
 
   // Load water history when tank changes
   useEffect(() => {
@@ -423,6 +458,11 @@ export default function MyTankScreen() {
           .catch(() => {
             // Silently fail
           });
+        
+        // Reload disease history if modal is open
+        if (showDiseaseHistory) {
+          loadDiseaseHistory();
+        }
         
         // Reload aquascape items
         getLatestAquascapeLayout(selectedTankId, session.user.id)
@@ -619,6 +659,66 @@ export default function MyTankScreen() {
     setShowWaterLogModal(true);
   };
 
+  // Get relative time display (e.g., "2 hours ago", "3 days ago")
+  const getRelativeTime = (dateString: string): string => {
+    const date = new Date(dateString);
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMs / 3600000);
+    const diffDays = Math.floor(diffMs / 86400000);
+
+    if (diffMins < 1) return 'Just now';
+    if (diffMins < 60) return `${diffMins} min${diffMins > 1 ? 's' : ''} ago`;
+    if (diffHours < 24) return `${diffHours} hour${diffHours > 1 ? 's' : ''} ago`;
+    if (diffDays < 7) return `${diffDays} day${diffDays > 1 ? 's' : ''} ago`;
+    
+    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: date.getFullYear() !== now.getFullYear() ? 'numeric' : undefined });
+  };
+
+  // Load disease history
+  const loadDiseaseHistory = async () => {
+    if (!session?.user?.id) return;
+    
+    setIsLoadingHistory(true);
+    try {
+      const result = await fetchDiseaseCheckHistory({
+        ownerId: session.user.id,
+        tankId: selectedTankId || undefined,
+        limit: 20,
+        includeFailedScans: showFailedScans,
+      });
+
+      if (result.ok && result.checks) {
+        setDiseaseHistory(result.checks);
+      } else {
+        setDiseaseHistory([]);
+        if (result.error) {
+          console.error('[MyTank] Failed to load disease history:', result.error);
+        }
+      }
+    } catch (error) {
+      console.error('[MyTank] Disease history exception:', error);
+      setDiseaseHistory([]);
+    } finally {
+      setIsLoadingHistory(false);
+    }
+  };
+
+  // Open history modal and load data
+  const handleOpenDiseaseHistory = async () => {
+    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setShowDiseaseHistory(true);
+    loadDiseaseHistory();
+  };
+
+  // View a specific disease check in detail
+  const handleViewHistoryCheck = async (check: any) => {
+    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setSelectedHistoryCheck(check);
+    setShowDiseaseHistory(false);
+  };
+
   const handleDiseaseDetectionPress = async () => {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     
@@ -636,56 +736,278 @@ export default function MyTankScreen() {
       return;
     }
     
-    // Request camera permission
-    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+    // Show action sheet for photo selection
+    setShowPhotoPickerSheet(true);
+  };
+
+  const onPickFromLibrary = async () => {
+    console.log('[PickerDiag] pressed CAMERA_ROLL');
+    console.log('[DiseaseScanUI] CAMERA_ROLL pressed');
     
-    if (status !== 'granted') {
-      showToast('Camera permission is required', 'error');
-      return;
-    }
+    // Close the modal/sheet FIRST
+    setShowPhotoPickerSheet(false);
+    console.log('[PickerDiag] dismissed sheet');
     
-    // Launch camera
-    const result = await ImagePicker.launchCameraAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
-      aspect: [4, 3],
-      quality: 0.8,
-    });
+    // Wait for modal close animation and UI to stabilize
+    await new Promise(r => setTimeout(r, 350));
     
-    if (!result.canceled && result.assets[0]) {
+    try {
+      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      console.log('[DiseaseScanUI] media perm', perm);
+      if (!perm.granted) {
+        Alert.alert('Permission needed', 'Enable Photos access in Settings to choose a photo.');
+        return;
+      }
+
+      if (typeof ImagePicker.launchImageLibraryAsync !== 'function') {
+        Alert.alert('Picker not available', 'expo-image-picker is missing from this runtime. Rebuild dev client or restart Expo Go.');
+        return;
+      }
+
+      // Compatibility helper for mediaTypes
+      const imagesOnly =
+        // Newer SDKs
+        (ImagePicker as any).MediaType?.Image
+          ? [(ImagePicker as any).MediaType.Image]
+          : // Older SDKs / Expo Go
+            (ImagePicker as any).MediaTypeOptions?.Images
+              ? (ImagePicker as any).MediaTypeOptions.Images
+              : undefined;
+
+      const launchOptions: any = {
+        allowsEditing: false,
+        quality: 0.8,
+      };
+      if (imagesOnly !== undefined) {
+        launchOptions.mediaTypes = imagesOnly;
+      }
+      
+      console.log('[PickerDiag] launching picker');
+      const res = await ImagePicker.launchImageLibraryAsync(launchOptions);
+      console.log('[PickerDiag] library returned', res);
+      console.log('[DiseaseScanUI] library result', res);
+
+      if (!isMounted.current) {
+        console.log('[DiseaseScanUI] component unmounted, aborting');
+        return;
+      }
+
+      if (res.canceled) return;
+
+      const uri = res.assets?.[0]?.uri;
+      if (!uri) throw new Error('No image URI returned from library');
+
       setIsAnalyzing(true);
       setDetectionStage('uploading');
+      setCurrentStepMessage('Uploading image...');
       setShowDiseaseDetectionModal(true);
-      
-      // Run actual disease detection
-      const detectionResult = await runDiseaseDetection({
-        localUri: result.assets[0].uri,
-        tankId: selectedTankId || undefined,
-        sessionUserId: session.user.id,
-        onProgress: (stage) => {
-          setDetectionStage(stage);
+
+      const scanResult = await runDiseaseScan({
+        localUri: uri,
+        tankId: selectedTankId || null,
+        onStep: (step) => {
+          setCurrentStepMessage(step);
+          if (step.includes('Analyzing')) {
+            setDetectionStage('analyzing');
+          } else if (step.includes('complete') || step.includes('Complete')) {
+            setDetectionStage('complete');
+          } else if (step.includes('History')) {
+            setDetectionStage('analyzing');
+          }
         },
       });
-      
-      if (detectionResult.ok && detectionResult.result) {
-        setDiseaseAnalysisResult({
-          ...detectionResult.result,
-          imageUri: result.assets[0].uri,
-        });
+
+      // Map new API result format to UI format
+      const resultData = scanResult.result;
+      const status = resultData.status || 'complete';
+
+      // Handle timeout/processing case
+      if (status === 'processing') {
         setIsAnalyzing(false);
-        
-        // Increment disease check count for free users
+        setShowDiseaseDetectionModal(false);
+        showToast('Analysis is taking longer than expected. Check History in a moment.', 'warning');
+
         if (!isPremium) {
           incrementDiseaseCheck();
         }
-        
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      } else {
+        if (session?.user?.id) {
+          loadDiseaseHistory();
+        }
+
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+        return;
+      }
+
+      // Handle error case
+      if (status === 'error') {
         setIsAnalyzing(false);
         setShowDiseaseDetectionModal(false);
-        showToast(detectionResult.error || 'Analysis failed', 'error');
+        showToast(resultData.error || 'Analysis failed', 'error');
+
+        if (session?.user?.id) {
+          loadDiseaseHistory();
+        }
+
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+        return;
       }
+
+      // Success case
+      setDiseaseAnalysisResult({
+        id: scanResult.id,
+        likelyIssue: resultData.likelyIssue || 'No issues detected',
+        confidence: Math.round((resultData.confidence || 0) * 100),
+        severity: resultData.severity || 'unknown',
+        observations: resultData.observations || [],
+        advice: resultData.advice || [],
+        disclaimer: resultData.disclaimer || 'This is an AI analysis for educational purposes only.',
+        imageUri: uri,
+      });
+      setIsAnalyzing(false);
+      setDetectionStage('complete');
+
+      if (!isPremium) {
+        incrementDiseaseCheck();
+      }
+
+      if (session?.user?.id) {
+        loadDiseaseHistory();
+      }
+
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch (e: any) {
+      console.error('[DiseaseScanUI] library error', e);
+      Alert.alert('Photo error', e?.message ?? 'Failed to pick photo');
+      setIsAnalyzing(false);
+      setShowDiseaseDetectionModal(false);
+    }
+  };
+
+  const onTakePhoto = async () => {
+    console.log('[PickerDiag] pressed TAKE_PICTURE');
+    console.log('[DiseaseScanUI] TAKE_PICTURE pressed');
+    
+    // Close the modal/sheet FIRST
+    setShowPhotoPickerSheet(false);
+    console.log('[PickerDiag] dismissed sheet');
+    
+    // Wait for modal close animation and UI to stabilize
+    await new Promise(r => setTimeout(r, 350));
+    
+    try {
+      const perm = await ImagePicker.requestCameraPermissionsAsync();
+      console.log('[DiseaseScanUI] camera perm', perm);
+      if (!perm.granted) {
+        Alert.alert('Permission needed', 'Enable Camera access in Settings to take a photo.');
+        return;
+      }
+
+      if (typeof ImagePicker.launchCameraAsync !== 'function') {
+        Alert.alert('Picker not available', 'expo-image-picker is missing from this runtime. Rebuild dev client or restart Expo Go.');
+        return;
+      }
+
+      console.log('[PickerDiag] launching picker');
+      const res = await ImagePicker.launchCameraAsync({
+        allowsEditing: false,
+        quality: 0.8,
+      });
+      console.log('[PickerDiag] camera returned', res);
+      console.log('[DiseaseScanUI] camera result', res);
+
+      if (!isMounted.current) {
+        console.log('[DiseaseScanUI] component unmounted, aborting');
+        return;
+      }
+
+      if (res.canceled) return;
+
+      const uri = res.assets?.[0]?.uri;
+      if (!uri) throw new Error('No image URI returned from camera');
+
+      setIsAnalyzing(true);
+      setDetectionStage('uploading');
+      setCurrentStepMessage('Uploading image...');
+      setShowDiseaseDetectionModal(true);
+
+      const scanResult = await runDiseaseScan({
+        localUri: uri,
+        tankId: selectedTankId || null,
+        onStep: (step) => {
+          setCurrentStepMessage(step);
+          if (step.includes('Analyzing')) {
+            setDetectionStage('analyzing');
+          } else if (step.includes('complete') || step.includes('Complete')) {
+            setDetectionStage('complete');
+          } else if (step.includes('History')) {
+            setDetectionStage('analyzing');
+          }
+        },
+      });
+
+      // Map new API result format to UI format
+      const resultData = scanResult.result;
+      const status = resultData.status || 'complete';
+
+      // Handle timeout/processing case
+      if (status === 'processing') {
+        setIsAnalyzing(false);
+        setShowDiseaseDetectionModal(false);
+        showToast('Analysis is taking longer than expected. Check History in a moment.', 'warning');
+
+        if (!isPremium) {
+          incrementDiseaseCheck();
+        }
+        if (session?.user?.id) {
+          loadDiseaseHistory();
+        }
+
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+        return;
+      }
+
+      // Handle error case
+      if (status === 'error') {
+        setIsAnalyzing(false);
+        setShowDiseaseDetectionModal(false);
+        showToast(resultData.error || 'Analysis failed', 'error');
+
+        if (session?.user?.id) {
+          loadDiseaseHistory();
+        }
+
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+        return;
+      }
+
+      // Success case
+      setDiseaseAnalysisResult({
+        id: scanResult.id,
+        likelyIssue: resultData.likelyIssue || 'No issues detected',
+        confidence: Math.round((resultData.confidence || 0) * 100),
+        severity: resultData.severity || 'unknown',
+        observations: resultData.observations || [],
+        advice: resultData.advice || [],
+        disclaimer: resultData.disclaimer || 'This is an AI analysis for educational purposes only.',
+        imageUri: uri,
+      });
+      setIsAnalyzing(false);
+      setDetectionStage('complete');
+
+      if (!isPremium) {
+        incrementDiseaseCheck();
+      }
+
+      if (session?.user?.id) {
+        loadDiseaseHistory();
+      }
+
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch (e: any) {
+      console.error('[DiseaseScanUI] camera error', e);
+      Alert.alert('Camera error', e?.message ?? 'Failed to take photo');
+      setIsAnalyzing(false);
+      setShowDiseaseDetectionModal(false);
     }
   };
 
@@ -716,14 +1038,18 @@ export default function MyTankScreen() {
     setShowAddToTankSheet(true);
   };
 
-  const handleConfirmAddFish = async (quantity: number) => {
-    if (!selectedTankId || !selectedSpeciesForAdd || !selectedTank) return;
+  const handleConfirmAddFish = async (tankId: string, quantity: number) => {
+    if (!selectedSpeciesForAdd) return;
+    
+    // Get the actual tank being added to (could be different from selectedTank if multiple tanks)
+    const targetTank = tanks.find(t => t.id === tankId);
+    if (!targetTank) return;
     
     // Check water type compatibility (CRITICAL - prevent mismatched water types)
-    if (selectedSpeciesForAdd.waterType !== selectedTank.waterType) {
+    if (selectedSpeciesForAdd.waterType !== targetTank.waterType) {
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       showToast(
-        `Cannot add ${selectedSpeciesForAdd.commonName}: ${selectedSpeciesForAdd.waterType} fish cannot be added to a ${selectedTank.waterType} tank`,
+        `Cannot add ${selectedSpeciesForAdd.commonName}: ${selectedSpeciesForAdd.waterType} fish cannot be added to a ${targetTank.waterType} tank`,
         'error'
       );
       return;
@@ -732,7 +1058,7 @@ export default function MyTankScreen() {
     await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     
     // Use the new batch add method
-    addFishInstances(selectedTankId, selectedSpeciesForAdd.id, quantity);
+    addFishInstances(tankId, selectedSpeciesForAdd.id, quantity);
     
     setShowAddToTankSheet(false);
     setSelectedSpeciesForAdd(null);
@@ -965,7 +1291,7 @@ export default function MyTankScreen() {
                 {session?.user?.id && (
                   <TouchableOpacity 
                     style={styles.historyButton}
-                    onPress={() => setShowDiseaseHistory(true)}
+                    onPress={handleOpenDiseaseHistory}
                   >
                     <Text style={styles.historyButtonText}>History</Text>
                   </TouchableOpacity>
@@ -1126,44 +1452,103 @@ export default function MyTankScreen() {
               </GlassCard>
             ) : (
               <View style={styles.fishList}>
-                {selectedTank.fishInstances.map((instance, index) => {
-                  const species = getSpeciesBySlugSync(instance.speciesId, instance);
-                  return (
-                    <GlassCard 
-                      key={instance.instanceId} 
-                      style={styles.fishCard}
-                      delay={450 + index * 50}
-                      onPress={() => handleFishPress(instance.instanceId)}
-                    >
-                      {species?.image_key ? (
-                        <View style={styles.fishCardIcon}>
-                          <FishThumb 
-                            imageKey={species.image_key} 
-                            size={20} 
+                {(() => {
+                  // Group fish by species
+                  const groupedFish = selectedTank.fishInstances.reduce((acc, instance) => {
+                    const key = instance.speciesId;
+                    if (!acc[key]) {
+                      acc[key] = {
+                        instances: [],
+                        species: getSpeciesBySlugSync(instance.speciesId, instance),
+                      };
+                    }
+                    acc[key].instances.push(instance);
+                    return acc;
+                  }, {} as Record<string, { instances: typeof selectedTank.fishInstances; species: ReturnType<typeof getSpeciesBySlugSync> }>);
+
+                  return Object.values(groupedFish).map((group, index) => {
+                    const species = group.species;
+                    const count = group.instances.length;
+                    const hasNicknames = group.instances.some(i => i.nickname);
+                    
+                    // If fish have individual nicknames, show them separately
+                    if (hasNicknames) {
+                      return group.instances.map((instance, subIndex) => (
+                        <GlassCard 
+                          key={instance.instanceId} 
+                          style={styles.fishCard}
+                          delay={450 + (index * group.instances.length + subIndex) * 50}
+                          onPress={() => handleFishPress(instance.instanceId)}
+                        >
+                          {species?.image_key ? (
+                            <View style={styles.fishCardIcon}>
+                              <FishThumb 
+                                imageKey={species.image_key} 
+                                size={20} 
+                              />
+                            </View>
+                          ) : (
+                            <View style={[styles.fishCardIcon, { backgroundColor: species?.color || '#FF6B35' }]}>
+                              <Text style={{ fontSize: 20 }}>🐠</Text>
+                            </View>
+                          )}
+                          <View style={styles.fishCardInfo}>
+                            <Text style={styles.fishCardName}>
+                              {instance.nickname || species?.commonName || 'Unknown Fish'}
+                            </Text>
+                            <Text style={styles.fishCardSpecies}>{species?.scientificName || ''}</Text>
+                          </View>
+                          <Badge 
+                            label={species?.temperament || 'peaceful'}
+                            variant={
+                              species?.temperament === 'peaceful' ? 'success' :
+                              species?.temperament === 'semi-aggressive' ? 'warning' : 'danger'
+                            }
+                            size="small"
                           />
+                        </GlassCard>
+                      ));
+                    }
+                    
+                    // Otherwise, show grouped with count
+                    return (
+                      <GlassCard 
+                        key={group.instances[0].instanceId} 
+                        style={styles.fishCard}
+                        delay={450 + index * 50}
+                        onPress={() => handleFishPress(group.instances[0].instanceId)}
+                      >
+                        {species?.image_key ? (
+                          <View style={styles.fishCardIcon}>
+                            <FishThumb 
+                              imageKey={species.image_key} 
+                              size={20} 
+                            />
+                          </View>
+                        ) : (
+                          <View style={[styles.fishCardIcon, { backgroundColor: species?.color || '#FF6B35' }]}>
+                            <Text style={{ fontSize: 20 }}>🐠</Text>
+                          </View>
+                        )}
+                        <View style={styles.fishCardInfo}>
+                          <Text style={styles.fishCardName}>
+                            {species?.commonName || 'Unknown Fish'}
+                            {count > 1 && <Text style={styles.fishCountBadge}> x{count}</Text>}
+                          </Text>
+                          <Text style={styles.fishCardSpecies}>{species?.scientificName || ''}</Text>
                         </View>
-                      ) : (
-                        <View style={[styles.fishCardIcon, { backgroundColor: species?.color || '#FF6B35' }]}>
-                          <Text style={{ fontSize: 20 }}>🐠</Text>
-                        </View>
-                      )}
-                      <View style={styles.fishCardInfo}>
-                        <Text style={styles.fishCardName}>
-                          {instance.nickname || species?.commonName || 'Unknown Fish'}
-                        </Text>
-                        <Text style={styles.fishCardSpecies}>{species?.scientificName || ''}</Text>
-                      </View>
-                      <Badge 
-                        label={species?.temperament || 'peaceful'}
-                        variant={
-                          species?.temperament === 'peaceful' ? 'success' :
-                          species?.temperament === 'semi-aggressive' ? 'warning' : 'danger'
-                        }
-                        size="small"
-                      />
-                    </GlassCard>
-                  );
-                })}
+                        <Badge 
+                          label={species?.temperament || 'peaceful'}
+                          variant={
+                            species?.temperament === 'peaceful' ? 'success' :
+                            species?.temperament === 'semi-aggressive' ? 'warning' : 'danger'
+                          }
+                          size="small"
+                        />
+                      </GlassCard>
+                    );
+                  });
+                })()}
               </View>
             )}
           </Animated.View>
@@ -1360,6 +1745,18 @@ export default function MyTankScreen() {
                 <Text style={styles.fishStatLabel}>Diet</Text>
                 <Text style={styles.fishStatValue}>{selectedSpecies.diet}</Text>
               </View>
+              {selectedSpecies.tempMin !== undefined && selectedSpecies.tempMax !== undefined && (
+                <View style={styles.fishStatItem}>
+                  <Text style={styles.fishStatLabel}>Temp</Text>
+                  <Text style={styles.fishStatValue}>{selectedSpecies.tempMin}-{selectedSpecies.tempMax}°F</Text>
+                </View>
+              )}
+              {selectedSpecies.phMin !== undefined && selectedSpecies.phMax !== undefined && (
+                <View style={styles.fishStatItem}>
+                  <Text style={styles.fishStatLabel}>pH</Text>
+                  <Text style={styles.fishStatValue}>{selectedSpecies.phMin}-{selectedSpecies.phMax}</Text>
+                </View>
+              )}
             </View>
 
             <View style={styles.fishDetailBadges}>
@@ -1374,7 +1771,14 @@ export default function MyTankScreen() {
               {selectedSpecies.schooling && <Badge label="Schooling" variant="info" />}
             </View>
 
-            <Text style={styles.fishDetailNotes}>{selectedSpecies.careNotes}</Text>
+            {(selectedSpecies.careNotesShort || selectedSpecies.careNotes) && (
+              <View style={styles.fishDetailNotesContainer}>
+                <Text style={styles.fishDetailNotesTitle}>Care Notes</Text>
+                <Text style={styles.fishDetailNotes}>
+                  {selectedSpecies.careNotesShort || selectedSpecies.careNotes}
+                </Text>
+              </View>
+            )}
 
             <View style={styles.fishDetailActions}>
               <Button
@@ -1494,7 +1898,7 @@ export default function MyTankScreen() {
             setSelectedSpeciesForAdd(null);
           }}
           species={selectedSpeciesForAdd}
-          tank={selectedTank}
+          tanks={[selectedTank]}
           onConfirm={handleConfirmAddFish}
         />
       )}
@@ -1514,14 +1918,12 @@ export default function MyTankScreen() {
           <View style={styles.analyzingContainer}>
             <MascotIcon variant="search" size={80} />
             <Text style={styles.analyzingText}>
-              {detectionStage === 'uploading' && 'Uploading image...'}
-              {detectionStage === 'analyzing' && 'Analyzing image...'}
-              {detectionStage === 'complete' && 'Complete!'}
+              {currentStepMessage || 'Processing...'}
             </Text>
             <Text style={styles.analyzingSubtext}>
               {detectionStage === 'uploading' && 'Securing your image'}
               {detectionStage === 'analyzing' && 'AI is examining your fish'}
-              {detectionStage === 'complete' && 'Processing results'}
+              {detectionStage === 'complete' && 'Finalizing results'}
             </Text>
           </View>
         ) : diseaseAnalysisResult ? (
@@ -1556,37 +1958,36 @@ export default function MyTankScreen() {
               />
             )}
 
-            {/* Advice */}
-            {diseaseAnalysisResult.advice && (
+            {/* Observations */}
+            {diseaseAnalysisResult.observations && diseaseAnalysisResult.observations.length > 0 && (
               <View style={styles.diseaseSection}>
-                <Text style={styles.diseaseSectionTitle}>Analysis</Text>
-                <Text style={styles.adviceText}>{diseaseAnalysisResult.advice}</Text>
-              </View>
-            )}
-
-            {/* Symptoms */}
-            {diseaseAnalysisResult.symptoms && diseaseAnalysisResult.symptoms.length > 0 && (
-              <View style={styles.diseaseSection}>
-                <Text style={styles.diseaseSectionTitle}>Observed Symptoms</Text>
-                {diseaseAnalysisResult.symptoms.map((symptom: string, index: number) => (
+                <Text style={styles.diseaseSectionTitle}>Observations</Text>
+                {diseaseAnalysisResult.observations.map((observation: string, index: number) => (
                   <View key={index} style={styles.symptomItem}>
                     <Check size={16} color="#10B981" />
-                    <Text style={styles.symptomText}>{symptom}</Text>
+                    <Text style={styles.symptomText}>{observation}</Text>
                   </View>
                 ))}
               </View>
             )}
 
-            {/* Treatment */}
-            {diseaseAnalysisResult.treatment && diseaseAnalysisResult.treatment.length > 0 && (
+            {/* Advice */}
+            {diseaseAnalysisResult.advice && diseaseAnalysisResult.advice.length > 0 && (
               <View style={styles.diseaseSection}>
-                <Text style={styles.diseaseSectionTitle}>Recommended Treatment</Text>
-                {diseaseAnalysisResult.treatment.map((step: string, index: number) => (
+                <Text style={styles.diseaseSectionTitle}>Recommended Actions</Text>
+                {diseaseAnalysisResult.advice.map((step: string, index: number) => (
                   <View key={index} style={styles.treatmentItem}>
                     <Text style={styles.treatmentNumber}>{index + 1}</Text>
                     <Text style={styles.treatmentText}>{step}</Text>
                   </View>
                 ))}
+              </View>
+            )}
+
+            {/* Disclaimer */}
+            {diseaseAnalysisResult.disclaimer && (
+              <View style={styles.diseaseSection}>
+                <Text style={styles.adviceText}>{diseaseAnalysisResult.disclaimer}</Text>
               </View>
             )}
 
@@ -1615,6 +2016,33 @@ export default function MyTankScreen() {
         ) : null}
       </Modal>
 
+      {/* Photo Picker Action Sheet */}
+      <Modal
+        visible={showPhotoPickerSheet}
+        onClose={() => setShowPhotoPickerSheet(false)}
+        title="Select Photo Source"
+        size="small"
+      >
+        <View style={styles.photoPickerActions}>
+          <TouchableOpacity
+            style={styles.photoPickerButton}
+            onPress={onTakePhoto}
+          >
+            <Camera size={24} color="#4ECDC4" />
+            <Text style={styles.photoPickerButtonText}>Take Photo</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.photoPickerButton}
+            onPress={onPickFromLibrary}
+          >
+            <View style={styles.photoPickerIconContainer}>
+              <Text style={styles.photoPickerIcon}>🖼️</Text>
+            </View>
+            <Text style={styles.photoPickerButtonText}>Choose from Library</Text>
+          </TouchableOpacity>
+        </View>
+      </Modal>
+
       {/* Disease History Modal */}
       <Modal
         visible={showDiseaseHistory}
@@ -1622,6 +2050,23 @@ export default function MyTankScreen() {
         title="Disease Check History"
         size="large"
       >
+        {/* Toggle for showing failed scans */}
+        <View style={styles.historyToggleContainer}>
+          <TouchableOpacity
+            style={styles.historyToggle}
+            onPress={async () => {
+              await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              setShowFailedScans(!showFailedScans);
+            }}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.historyToggleLabel}>Show failed scans</Text>
+            <View style={[styles.historyToggleSwitch, showFailedScans && styles.historyToggleSwitchActive]}>
+              <View style={[styles.historyToggleKnob, showFailedScans && styles.historyToggleKnobActive]} />
+            </View>
+          </TouchableOpacity>
+        </View>
+
         {isLoadingHistory ? (
           <View style={styles.analyzingContainer}>
             <Text style={styles.analyzingText}>Loading history...</Text>
@@ -1638,9 +2083,100 @@ export default function MyTankScreen() {
           <ScrollView style={styles.historyScrollView} showsVerticalScrollIndicator={false}>
             {diseaseHistory.map((check) => {
               const result = check.result || {};
-              const checkDate = new Date(check.created_at);
+              const status = check.status || result.status || 'processing';
+              const relativeTime = getRelativeTime(check.created_at);
+              const isFailed = status === 'failed';
+              const errorMessage = check.error_message || result.error;
+              
+              // Calculate confidence as percentage if needed
+              const confidencePercent = result.confidence 
+                ? (result.confidence > 1 ? result.confidence : Math.round(result.confidence * 100))
+                : null;
+
+              return (
+                <TouchableOpacity 
+                  key={check.id} 
+                  style={styles.historyItem}
+                  onPress={() => handleViewHistoryCheck(check)}
+                  activeOpacity={0.7}
+                >
+                  <View style={styles.historyItemHeader}>
+                    <View style={styles.historyItemTitleRow}>
+                      {status === 'processing' ? (
+                        <View style={styles.processingBadge}>
+                          <Text style={styles.processingBadgeText}>Processing...</Text>
+                        </View>
+                      ) : isFailed ? (
+                        <Text style={styles.historyItemTitleError}>Failed</Text>
+                      ) : status === 'error' ? (
+                        <Text style={styles.historyItemTitleError}>Error</Text>
+                      ) : (
+                        <Text style={styles.historyItemTitle}>
+                          {result.likelyIssue || 'No issues detected'}
+                        </Text>
+                      )}
+                    </View>
+                    <Text style={styles.historyItemDate}>
+                      {relativeTime}
+                    </Text>
+                  </View>
+                  
+                  {status === 'complete' && confidencePercent !== null && (
+                    <View style={styles.historyItemRow}>
+                      <Text style={styles.historyItemLabel}>Confidence:</Text>
+                      <Text style={[
+                        styles.historyItemValue,
+                        { color: confidencePercent >= 80 ? '#10B981' : confidencePercent >= 60 ? '#FF9800' : '#EF4444' }
+                      ]}>
+                        {confidencePercent}%
+                      </Text>
+                    </View>
+                  )}
+                  
+                  {status === 'complete' && result.severity && (
+                    <View style={styles.historyItemRow}>
+                      <Text style={styles.historyItemLabel}>Severity:</Text>
+                      <Text style={[
+                        styles.historyItemValue,
+                        { color: result.severity === 'low' ? '#10B981' : result.severity === 'medium' ? '#FF9800' : result.severity === 'high' ? '#EF4444' : '#64748B' }
+                      ]}>
+                        {result.severity.charAt(0).toUpperCase() + result.severity.slice(1)}
+                      </Text>
+                    </View>
+                  )}
+                  
+                  {(isFailed || status === 'error') && errorMessage && (
+                    <Text style={styles.historyItemError}>{errorMessage}</Text>
+                  )}
+                  
+                  <View style={styles.historyItemTapHint}>
+                    <Text style={styles.historyItemTapHintText}>Tap to view details →</Text>
+                  </View>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+        )}
+      </Modal>
+
+      {/* Selected History Check Detail Modal */}
+      {selectedHistoryCheck && (
+        <Modal
+          visible={!!selectedHistoryCheck}
+          onClose={() => setSelectedHistoryCheck(null)}
+          title="Disease Check Details"
+          size="large"
+        >
+          <ScrollView style={styles.diseaseResultContent} showsVerticalScrollIndicator={false}>
+            {(() => {
+              const result = selectedHistoryCheck.result || {};
+              const status = result.status || 'processing';
+              const confidencePercent = result.confidence 
+                ? (result.confidence > 1 ? result.confidence : Math.round(result.confidence * 100))
+                : null;
+              const checkDate = new Date(selectedHistoryCheck.created_at);
               const formattedDate = checkDate.toLocaleDateString('en-US', {
-                month: 'short',
+                month: 'long',
                 day: 'numeric',
                 year: 'numeric',
               });
@@ -1649,51 +2185,126 @@ export default function MyTankScreen() {
                 minute: '2-digit',
               });
 
-              return (
-                <View key={check.id} style={styles.historyItem}>
-                  <View style={styles.historyItemHeader}>
-                    <Text style={styles.historyItemTitle}>
-                      {result.likelyIssue || 'Analysis'}
+              if (status === 'processing') {
+                return (
+                  <View style={styles.analyzingContainer}>
+                    <MascotIcon variant="search" size={80} />
+                    <Text style={styles.analyzingText}>Still Processing...</Text>
+                    <Text style={styles.analyzingSubtext}>This scan is still being analyzed</Text>
+                  </View>
+                );
+              }
+
+              if (status === 'error') {
+                return (
+                  <View style={styles.errorContainer}>
+                    <AlertCircle size={64} color="#EF4444" />
+                    <Text style={styles.errorTitle}>Analysis Failed</Text>
+                    <Text style={styles.errorMessage}>
+                      {result.error || 'An error occurred during analysis'}
                     </Text>
-                    <Text style={styles.historyItemDate}>
+                    <Text style={styles.errorDate}>
                       {formattedDate} at {formattedTime}
                     </Text>
                   </View>
-                  
-                  {result.confidence && (
-                    <View style={styles.historyItemRow}>
-                      <Text style={styles.historyItemLabel}>Confidence:</Text>
-                      <Text style={[
-                        styles.historyItemValue,
-                        { color: result.confidence >= 80 ? '#10B981' : result.confidence >= 60 ? '#FF9800' : '#EF4444' }
-                      ]}>
-                        {result.confidence}%
-                      </Text>
-                    </View>
-                  )}
-                  
-                  {result.severity && (
-                    <View style={styles.historyItemRow}>
-                      <Text style={styles.historyItemLabel}>Severity:</Text>
-                      <Text style={styles.historyItemValue}>{result.severity}</Text>
-                    </View>
-                  )}
-                  
-                  {result.status === 'error' && result.error && (
-                    <Text style={styles.historyItemError}>Error: {result.error}</Text>
-                  )}
-                  
-                  {result.advice && (
-                    <Text style={styles.historyItemAdvice} numberOfLines={2}>
-                      {result.advice}
+                );
+              }
+
+              return (
+                <>
+                  {/* Date/Time */}
+                  <View style={styles.checkDateContainer}>
+                    <Text style={styles.checkDateText}>
+                      {formattedDate} at {formattedTime}
                     </Text>
+                  </View>
+
+                  {/* Disclaimer */}
+                  <View style={styles.disclaimerBanner}>
+                    <AlertCircle size={20} color="#FF9800" />
+                    <Text style={styles.disclaimerText}>
+                      This is an AI-powered analysis and not veterinary advice. Always consult a professional for diagnosis and treatment.
+                    </Text>
+                  </View>
+
+                  {/* Disease Name & Confidence */}
+                  <View style={styles.diseaseHeader}>
+                    <Text style={styles.diseaseName}>
+                      {result.likelyIssue || 'No issues detected'}
+                    </Text>
+                    {confidencePercent !== null && (
+                      <View style={styles.confidenceContainer}>
+                        <Text style={styles.confidenceLabel}>Confidence:</Text>
+                        <Text style={[
+                          styles.confidenceValue,
+                          { color: confidencePercent >= 80 ? '#10B981' : confidencePercent >= 60 ? '#FF9800' : '#EF4444' }
+                        ]}>
+                          {confidencePercent}%
+                        </Text>
+                      </View>
+                    )}
+                  </View>
+
+                  {/* Severity Badge */}
+                  {result.severity && (
+                    <Badge 
+                      label={`Severity: ${result.severity.charAt(0).toUpperCase() + result.severity.slice(1)}`}
+                      variant={
+                        result.severity === 'low' ? 'success' : 
+                        result.severity === 'medium' ? 'warning' : 
+                        result.severity === 'high' ? 'danger' : 
+                        'default'
+                      }
+                    />
                   )}
-                </View>
+
+                  {/* Observations */}
+                  {result.observations && result.observations.length > 0 && (
+                    <View style={styles.diseaseSection}>
+                      <Text style={styles.diseaseSectionTitle}>Observations</Text>
+                      {result.observations.map((observation: string, index: number) => (
+                        <View key={index} style={styles.symptomItem}>
+                          <Check size={16} color="#10B981" />
+                          <Text style={styles.symptomText}>{observation}</Text>
+                        </View>
+                      ))}
+                    </View>
+                  )}
+
+                  {/* Advice */}
+                  {result.advice && result.advice.length > 0 && (
+                    <View style={styles.diseaseSection}>
+                      <Text style={styles.diseaseSectionTitle}>Recommended Actions</Text>
+                      {result.advice.map((step: string, index: number) => (
+                        <View key={index} style={styles.treatmentItem}>
+                          <Text style={styles.treatmentNumber}>{index + 1}</Text>
+                          <Text style={styles.treatmentText}>{step}</Text>
+                        </View>
+                      ))}
+                    </View>
+                  )}
+
+                  {/* Disclaimer */}
+                  {result.disclaimer && (
+                    <View style={styles.diseaseSection}>
+                      <Text style={styles.adviceText}>{result.disclaimer}</Text>
+                    </View>
+                  )}
+
+                  {/* Action Buttons */}
+                  <View style={styles.diseaseActionButtons}>
+                    <Button
+                      title="Close"
+                      onPress={() => setSelectedHistoryCheck(null)}
+                      variant="primary"
+                    />
+                  </View>
+                </>
               );
-            })}
+            })()}
           </ScrollView>
-        )}
-      </Modal>
+        </Modal>
+      )}
     </View>
   );
 }
@@ -1907,6 +2518,48 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     maxWidth: 240,
   },
+  historyToggleContainer: {
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(13, 115, 119, 0.1)',
+    marginBottom: 8,
+  },
+  historyToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  historyToggleLabel: {
+    fontSize: 15,
+    fontWeight: '500',
+    color: '#1A252F',
+  },
+  historyToggleSwitch: {
+    width: 48,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#CBD5E1',
+    padding: 2,
+    justifyContent: 'center',
+  },
+  historyToggleSwitchActive: {
+    backgroundColor: '#0D7377',
+  },
+  historyToggleKnob: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: '#FFFFFF',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 3,
+    elevation: 3,
+  },
+  historyToggleKnobActive: {
+    transform: [{ translateX: 20 }],
+  },
   historyScrollView: {
     maxHeight: 500,
   },
@@ -1956,6 +2609,67 @@ const styles = StyleSheet.create({
     color: '#475569',
     marginTop: 8,
     lineHeight: 18,
+  },
+  historyItemTitleRow: {
+    marginBottom: 4,
+  },
+  historyItemTitleError: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#EF4444',
+  },
+  processingBadge: {
+    backgroundColor: 'rgba(255, 152, 0, 0.15)',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 6,
+    alignSelf: 'flex-start',
+  },
+  processingBadgeText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#FF9800',
+  },
+  historyItemTapHint: {
+    marginTop: 8,
+    alignItems: 'flex-end',
+  },
+  historyItemTapHintText: {
+    fontSize: 12,
+    color: '#4ECDC4',
+    fontWeight: '500',
+  },
+  checkDateContainer: {
+    marginBottom: 16,
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(0, 0, 0, 0.05)',
+  },
+  checkDateText: {
+    fontSize: 14,
+    color: '#64748B',
+    fontWeight: '500',
+  },
+  errorContainer: {
+    alignItems: 'center',
+    paddingVertical: 40,
+    gap: 16,
+  },
+  errorTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#EF4444',
+  },
+  errorMessage: {
+    fontSize: 14,
+    color: '#64748B',
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+  errorDate: {
+    fontSize: 13,
+    color: '#94A3B8',
+    marginTop: 8,
   },
   diseaseDetectionDisclaimer: {
     flexDirection: 'row',
@@ -2043,6 +2757,11 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '600',
     color: '#1A252F',
+  },
+  fishCountBadge: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#0D7377',
   },
   fishCardSpecies: {
     fontSize: 12,
@@ -2185,6 +2904,15 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 8,
+  },
+  fishDetailNotesContainer: {
+    marginTop: 12,
+  },
+  fishDetailNotesTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#0D7377',
+    marginBottom: 6,
   },
   fishDetailNotes: {
     fontSize: 14,
@@ -2476,5 +3204,67 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#6B7280',
     fontStyle: 'italic',
+  },
+  // Photo Picker Styles
+  photoPickerActions: {
+    gap: 12,
+    paddingVertical: 8,
+  },
+  photoPickerButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    backgroundColor: 'rgba(78, 205, 196, 0.1)',
+    padding: 18,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: 'rgba(78, 205, 196, 0.3)',
+  },
+  photoPickerIconContainer: {
+    width: 24,
+    height: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  photoPickerIcon: {
+    fontSize: 24,
+  },
+  photoPickerButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#0D7377',
+    flex: 1,
+  },
+  checkDateContainer: {
+    marginBottom: 16,
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(0, 0, 0, 0.05)',
+  },
+  checkDateText: {
+    fontSize: 14,
+    color: '#64748B',
+    fontWeight: '500',
+  },
+  errorContainer: {
+    alignItems: 'center',
+    paddingVertical: 40,
+    gap: 16,
+  },
+  errorTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#EF4444',
+  },
+  errorMessage: {
+    fontSize: 14,
+    color: '#64748B',
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+  errorDate: {
+    fontSize: 13,
+    color: '#94A3B8',
+    marginTop: 8,
   },
 });

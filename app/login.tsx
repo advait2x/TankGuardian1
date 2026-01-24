@@ -15,7 +15,6 @@ import { supabase } from '@/utils/supabase';
 
 export default function LoginScreen() {
   const router = useRouter();
-  const { hasCompletedOnboarding } = useApp();
   const { session } = useAuth();
   const { showToast } = useToast();
   const [email, setEmail] = useState('');
@@ -25,21 +24,18 @@ export default function LoginScreen() {
   const hasNavigatedRef = useRef(false);
 
   // Watch for session changes and navigate when user is authenticated
+  // Route to root and let _layout.tsx handle onboarding routing after profile loads
   useEffect(() => {
     if (session && !hasNavigatedRef.current) {
       hasNavigatedRef.current = true;
-      console.log('[Login] Session detected, navigating to:', hasCompletedOnboarding ? '/(tabs)' : '/onboarding');
+      console.log('[Login] Session detected, navigating to root guard');
       
       // Small delay to ensure state is settled
       setTimeout(() => {
-        if (hasCompletedOnboarding) {
-          router.replace('/(tabs)');
-        } else {
-          router.replace('/onboarding');
-        }
+        router.replace('/');
       }, 100);
     }
-  }, [session, hasCompletedOnboarding, router]);
+  }, [session, router]);
 
   const validate = () => {
     const newErrors: typeof errors = {};

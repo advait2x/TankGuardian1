@@ -130,10 +130,12 @@ export async function fetchDiseaseCheckHistory({
   ownerId,
   tankId,
   limit = 20,
+  includeFailedScans = false,
 }: {
   ownerId: string;
   tankId?: string;
   limit?: number;
+  includeFailedScans?: boolean;
 }): Promise<{
   ok: boolean;
   checks?: Array<{
@@ -142,16 +144,25 @@ export async function fetchDiseaseCheckHistory({
     image_path: string;
     result: DiseaseCheckResult;
     created_at: string;
+    status?: string;
+    error_message?: string;
   }>;
   error?: string;
 }> {
   try {
     let query = supabase
       .from('disease_checks')
-      .select('id, tank_id, image_path, result, created_at')
+      .select('id, tank_id, image_path, result, created_at, status, error_message')
       .eq('owner_id', ownerId)
       .order('created_at', { ascending: false })
       .limit(limit);
+
+    // Only show completed scans by default, optionally include failed
+    if (includeFailedScans) {
+      query = query.in('status', ['completed', 'failed']);
+    } else {
+      query = query.eq('status', 'completed');
+    }
 
     if (tankId) {
       query = query.eq('tank_id', tankId);

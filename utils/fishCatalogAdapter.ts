@@ -20,11 +20,16 @@ function mapRemoteToLocal(remote: RemoteFishSpecies): FishSpecies {
     diet: remote.diet as Diet,
     difficulty: remote.care_level as Difficulty,
     compatibilityTags: [], // Could be added to DB later
-    careNotes: '', // Could be added to DB later
+    careNotes: remote.care_notes || '', // Full care notes from DB
     modelKey: remote.slug || remote.id,
     imageUrl: remote.image_key ? `https://placeholder.co/400?text=${encodeURIComponent(remote.common_name)}` : '',
     color: '#0D7377', // Default color
     image_key: remote.image_key ?? null,
+    tempMin: remote.temp_min,
+    tempMax: remote.temp_max,
+    phMin: remote.ph_min,
+    phMax: remote.ph_max,
+    careNotesShort: remote.care_notes_short,
   };
 }
 

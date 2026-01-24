@@ -30,6 +30,7 @@ interface ModalProps {
   children: React.ReactNode;
   showCloseButton?: boolean;
   size?: 'small' | 'medium' | 'large' | 'full';
+  scrollable?: boolean; // If false, children must handle their own scrolling (e.g., FlatList)
 }
 
 export default function Modal({
@@ -39,6 +40,7 @@ export default function Modal({
   children,
   showCloseButton = true,
   size = 'medium',
+  scrollable = true,
 }: ModalProps) {
   const insets = useSafeAreaInsets();
   const translateY = useSharedValue(height);
@@ -145,20 +147,26 @@ export default function Modal({
             </View>
           )}
           
-            {/* Content - Now properly scrollable with safe area */}
-          <ScrollView
-            style={styles.scrollView}
+            {/* Content - Conditionally scrollable */}
+          {scrollable ? (
+            <ScrollView
+              style={styles.scrollView}
               contentContainerStyle={[
                 styles.content,
                 { paddingBottom: contentPaddingBottom }
               ]}
-            showsVerticalScrollIndicator={false}
-            bounces={true}
+              showsVerticalScrollIndicator={false}
+              bounces={true}
               nestedScrollEnabled={true}
               keyboardShouldPersistTaps="handled"
-          >
-            {children}
-          </ScrollView>
+            >
+              {children}
+            </ScrollView>
+          ) : (
+            <View style={[styles.scrollView, { paddingBottom: contentPaddingBottom }]}>
+              {children}
+            </View>
+          )}
           </KeyboardAvoidingView>
         </Animated.View>
       </View>

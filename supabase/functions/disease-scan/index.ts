@@ -4,9 +4,9 @@
  * Analyzes fish images for diseases using OpenAI Vision API.
  * 
  * Environment Variables:
- * - SUPABASE_URL (auto-provided)
+ * - PROJECT_URL (required - Supabase project URL)
+ * - SERVICE_ROLE_KEY (required - Supabase service role key)
  * - SUPABASE_ANON_KEY (auto-provided)
- * - SUPABASE_SERVICE_ROLE_KEY (auto-provided)
  * - OPENAI_API_KEY (required for real AI, or returns stub)
  * 
  * POST Body:
@@ -17,6 +17,7 @@
  */
 
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
+import { encodeBase64 } from 'https://deno.land/std@0.208.0/encoding/base64.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const corsHeaders = {
@@ -181,65 +182,62 @@ Guidelines:
   }
 }
 
-/**
- * Convert Uint8Array to base64 string safely using chunked processing
- * to avoid stack overflow with large images
- */
-function toBase64(bytes: Uint8Array): string {
-  let binary = '';
-  const chunkSize = 0x8000;
-  for (let i = 0; i < bytes.length; i += chunkSize) {
-    binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
-  }
-  return btoa(binary);
-}
-
 serve(async (req) => {
   // Handle CORS preflight
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
   }
 
-  const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-  const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-  const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
-
-  let diseaseCheckId: string | null = null;
-
   try {
+    console.log('[disease-scan] function start');
+    console.log('[disease-scan] Received request:', req.method);
+
+    const PROJECT_URL = Deno.env.get('PROJECT_URL');
+    const SERVICE_ROLE_KEY = Deno.env.get('SERVICE_ROLE_KEY');
+    const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
+    const openAIKey = Deno.env.get('OPENAI_API_KEY');
+
+    console.log('[disease-scan] env check', {
+      hasProjectUrl: !!PROJECT_URL,
+      hasServiceRoleKey: !!SERVICE_ROLE_KEY,
+      hasAnon: !!supabaseAnonKey,
+      hasOpenAI: !!openAIKey,
+    });
+
+    // Early validation: PROJECT_URL and SERVICE_ROLE_KEY are required
+    if (!PROJECT_URL) {
+      throw new Error('Missing PROJECT_URL environment variable');
+    }
+    if (!SERVICE_ROLE_KEY) {
+      throw new Error('Missing SERVICE_ROLE_KEY environment variable');
+    }
+
     // 1. Validate authenticated user
     const authHeader = req.headers.get('Authorization');
     if (!authHeader) {
-      return new Response(
-        JSON.stringify({ ok: false, error: 'Missing authorization header' }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 401 }
-      );
+      throw new Error('Missing authorization header');
     }
 
     // Create client with user's auth token
-    const supabaseUser = createClient(supabaseUrl, supabaseAnonKey, {
+    const supabaseUser = createClient(PROJECT_URL, supabaseAnonKey, {
       global: { headers: { Authorization: authHeader } }
     });
 
     const { data: { user }, error: authError } = await supabaseUser.auth.getUser();
     if (authError || !user) {
-      return new Response(
-        JSON.stringify({ ok: false, error: 'Unauthorized' }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 401 }
-      );
+      console.error('[disease-scan] Auth failed:', authError?.message);
+      throw new Error('Unauthorized');
     }
 
-    console.log(`[disease-scan] Request from user ${user.id}`);
+    console.log('[disease-scan] Authenticated user:', user.id);
 
     // Parse request body
     const body = await req.json();
-    diseaseCheckId = body.diseaseCheckId;
+    const diseaseCheckId = body.diseaseCheckId;
+    console.log('[disease-scan] Request body:', { diseaseCheckId });
 
     if (!diseaseCheckId) {
-      return new Response(
-        JSON.stringify({ ok: false, error: 'Missing diseaseCheckId in request body' }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
-      );
+      throw new Error('Missing diseaseCheckId in request body');
     }
 
     // 2. Fetch disease_checks row and verify ownership
@@ -251,63 +249,59 @@ serve(async (req) => {
 
     if (fetchError || !diseaseCheck) {
       console.error('[disease-scan] Fetch error:', fetchError?.message);
-      return new Response(
-        JSON.stringify({ ok: false, error: 'Disease check not found or access denied' }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 403 }
-      );
+      throw new Error('Disease check not found or access denied');
     }
+    
+    console.log('[disease-scan] Fetched disease_checks row:', { id: diseaseCheck.id, owner_id: diseaseCheck.owner_id, image_path: diseaseCheck.image_path });
 
     if (diseaseCheck.owner_id !== user.id) {
       console.error('[disease-scan] Owner mismatch:', diseaseCheck.owner_id, 'vs', user.id);
-      return new Response(
-        JSON.stringify({ ok: false, error: 'Access denied: not the owner' }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 403 }
-      );
+      throw new Error('Access denied: not the owner');
     }
 
-    console.log(`[disease-scan] Processing check ${diseaseCheckId}, image: ${diseaseCheck.image_path}`);
+    console.log('[disease-scan] Processing check:', diseaseCheckId, 'image:', diseaseCheck.image_path);
+
+    // Create admin client for database updates
+    const supabaseAdmin = createClient(PROJECT_URL, SERVICE_ROLE_KEY);
+
+    // Immediately set status to 'processing'
+    console.log('[disease-scan] Setting status to processing');
+    const { error: processingError } = await supabaseAdmin
+      .from('disease_checks')
+      .update({ 
+        status: 'processing',
+        result: { status: 'processing' }
+      })
+      .eq('id', diseaseCheckId);
+
+    if (processingError) {
+      console.error('[disease-scan] Failed to set processing status:', processingError.message);
+      // Continue anyway - don't fail the entire operation
+    }
 
     // 3. Download image from storage using service role
-    const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
-    
+    console.log('[disease-scan] Downloading from storage path:', diseaseCheck.image_path);
     const { data: imageBlob, error: downloadError } = await supabaseAdmin.storage
       .from('disease-images')
       .download(diseaseCheck.image_path);
 
     if (downloadError || !imageBlob) {
       console.error('[disease-scan] Download error:', downloadError?.message);
-      
-      // Update DB with error
-      const errorResult: DiseaseResult = {
-        status: 'error',
-        model: 'none',
-        likelyIssue: null,
-        confidence: 0,
-        severity: 'unknown',
-        observations: [],
-        advice: [],
-        disclaimer: '',
-        error: 'Failed to download image from storage',
-        updatedAt: new Date().toISOString()
-      };
-
-      await supabaseAdmin
-        .from('disease_checks')
-        .update({ result: errorResult })
-        .eq('id', diseaseCheckId);
-
-      return new Response(
-        JSON.stringify({ ok: false, error: errorResult.error }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
-      );
+      throw new Error('Failed to download image from storage');
     }
 
-    // 4. Convert image to base64
+    // 4. Convert image to base64 safely with byteLength check
     const arrayBuffer = await imageBlob.arrayBuffer();
+    
+    console.log('[disease-scan] Downloaded arrayBuffer byteLength:', arrayBuffer.byteLength);
+    if (arrayBuffer.byteLength === 0) {
+      throw new Error('Downloaded image is 0 bytes');
+    }
+    
     const bytes = new Uint8Array(arrayBuffer);
-    const base64 = toBase64(bytes);
+    const base64 = encodeBase64(bytes);
 
-    console.log('[disease-scan] Image downloaded, calling OpenAI Vision API...');
+    console.log('[disease-scan] Image converted to base64, calling OpenAI Vision API...');
 
     // 5. Call OpenAI Vision API
     const analysisResult = await analyzeImageWithOpenAI(base64);
@@ -320,57 +314,69 @@ serve(async (req) => {
       updatedAt: new Date().toISOString()
     };
 
-    console.log(`[disease-scan] Analysis complete: ${finalResult.likelyIssue || 'healthy'} (confidence: ${finalResult.confidence})`);
+    console.log('[disease-scan] Analysis complete:', finalResult.likelyIssue || 'healthy', 'confidence:', finalResult.confidence);
 
-    // Update disease_checks.result in database
+    // Update disease_checks with completed status and result
+    console.log('[disease-scan] Updating disease_checks result for ID:', diseaseCheckId);
     const { error: updateError } = await supabaseAdmin
       .from('disease_checks')
-      .update({ result: finalResult })
+      .update({ 
+        status: 'completed',
+        completed_at: new Date().toISOString(),
+        result: finalResult 
+      })
       .eq('id', diseaseCheckId);
 
     if (updateError) {
       console.error('[disease-scan] Update error:', updateError.message);
-      return new Response(
-        JSON.stringify({ ok: false, error: 'Failed to update database' }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
-      );
+      throw new Error('Failed to update database');
     }
 
-    // Return success
+    // Return success with ok: true and status 200
     return new Response(
       JSON.stringify({ ok: true, result: finalResult }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
     );
 
   } catch (error) {
-    console.error('[disease-scan] Unexpected error:', error);
+    // Log the full error
+    console.error('[disease-scan] Error:', error);
 
-    // Try to update DB with error if we have the ID
+    // Try to update database with failed status if we have the diseaseCheckId
+    const body = await req.clone().json().catch(() => ({}));
+    const diseaseCheckId = body.diseaseCheckId;
+    
     if (diseaseCheckId) {
       try {
-        const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
-        const errorResult: DiseaseResult = {
-          status: 'error',
-          model: 'none',
-          likelyIssue: null,
-          confidence: 0,
-          severity: 'unknown',
-          observations: [],
-          advice: [],
-          disclaimer: '',
-          error: error instanceof Error ? error.message : 'Unknown error',
-          updatedAt: new Date().toISOString()
-        };
-
-        await supabaseAdmin
-          .from('disease_checks')
-          .update({ result: errorResult })
-          .eq('id', diseaseCheckId);
-      } catch (updateErr) {
-        console.error('[disease-scan] Failed to update error in DB:', updateErr);
+        const PROJECT_URL = Deno.env.get('PROJECT_URL');
+        const SERVICE_ROLE_KEY = Deno.env.get('SERVICE_ROLE_KEY');
+        
+        if (PROJECT_URL && SERVICE_ROLE_KEY) {
+          const supabaseAdmin = createClient(PROJECT_URL, SERVICE_ROLE_KEY);
+          const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+          
+          await supabaseAdmin
+            .from('disease_checks')
+            .update({
+              status: 'failed',
+              completed_at: new Date().toISOString(),
+              error_message: errorMessage,
+              result: {
+                status: 'error',
+                error: errorMessage,
+                updatedAt: new Date().toISOString()
+              }
+            })
+            .eq('id', diseaseCheckId);
+          
+          console.log('[disease-scan] Updated database with failed status');
+        }
+      } catch (dbError) {
+        console.error('[disease-scan] Failed to update database with error status:', dbError);
       }
     }
 
+    // Return error with ok: false and status 500
     return new Response(
       JSON.stringify({ 
         ok: false, 
