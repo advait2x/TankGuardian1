@@ -1,9 +1,9 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useMemo } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, TextInput } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Animated, { FadeInDown, FadeIn } from 'react-native-reanimated';
-import { ArrowLeft, Square, Box, Hexagon, Droplets, Check } from 'lucide-react-native';
+import { ArrowLeft, Droplets, Check } from 'lucide-react-native';
 import AnimatedBackground from '@/components/ui/AnimatedBackground';
 import Button from '@/components/ui/Button';
 import GlassCard from '@/components/ui/GlassCard';
@@ -11,36 +11,40 @@ import Input from '@/components/ui/Input';
 import { useApp } from '@/store/AppContext';
 import { useAuth } from '@/store/AuthContext';
 import { useToast } from '@/components/ui/Toast';
+import { useUnitSettings } from '@/store/UnitSettingsContext';
 import { TankType, WaterType } from '@/data/types';
+import { useTheme } from '@/store/ThemeContext';
 import * as Haptics from 'expo-haptics';
 
-const tankTypes: { type: TankType; label: string; icon: any }[] = [
-  { type: 'rectangle', label: 'Rectangle', icon: Square },
-  { type: 'cube', label: 'Cube', icon: Box },
-  { type: 'bowfront', label: 'Bowfront', icon: Square },
-  { type: 'hex', label: 'Hexagon', icon: Hexagon },
-];
+
 
 const tankSizes = [5, 10, 20, 29, 40, 55, 75, 100];
 
 export default function CreateTankScreen() {
   const router = useRouter();
-  const { createTank, currentUser } = useApp();
+  const params = useLocalSearchParams();
+  const isOnboarding = params.isOnboarding === 'true' || params.isOnboarding === undefined; // Default true for backward compat
+  const { createTank, currentUser, tanks } = useApp();
   const { setOnboardingComplete } = useAuth();
   const { showToast } = useToast();
+  const { formatVolume, volumeUnit } = useUnitSettings();
+  const { colors, activeTheme } = useTheme();
   const hasMarkedCompleteRef = useRef(false);
   
   const [tankName, setTankName] = useState('My First Tank');
-  const [tankType, setTankType] = useState<TankType>('rectangle');
+  const [tankType] = useState<TankType>('rectangle');
   const [tankSize, setTankSize] = useState(20);
   const [waterType, setWaterType] = useState<WaterType>('freshwater');
   const [customSize, setCustomSize] = useState('');
   const [step, setStep] = useState(1);
 
-  const handleSelectType = async (type: TankType) => {
-    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    setTankType(type);
-  };
+  // Check for duplicate tank names
+  const isDuplicateName = useMemo(() => {
+    const trimmedName = tankName.trim().toLowerCase();
+    return tanks.some(t => t.name.trim().toLowerCase() === trimmedName);
+  }, [tankName, tanks]);
+
+
 
   const handleSelectSize = async (size: number) => {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -54,12 +58,23 @@ export default function CreateTankScreen() {
   };
 
   const handleNext = () => {
-    if (step < 3) {
+    // Prevent advancing if duplicate name
+    if (isDuplicateName) {
+      showToast('A tank with this name already exists', 'error');
+      return;
+    }
+    if (step < 2) {
       setStep(step + 1);
     }
   };
 
   const handleCreate = async () => {
+    // Check for duplicate name
+    if (isDuplicateName) {
+      showToast('A tank with this name already exists', 'error');
+      return;
+    }
+    
     await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     
     const finalSize = customSize ? parseInt(customSize) : tankSize;
@@ -111,53 +126,42 @@ export default function CreateTankScreen() {
   };
 
   return (
-    <View style={styles.container}>
-      <AnimatedBackground variant="light" />
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
+      <AnimatedBackground variant={activeTheme === 'dark' ? 'dark' : 'light'} />
       
       <SafeAreaView style={styles.safeArea}>
         {/* Header */}
         <Animated.View entering={FadeInDown.duration(300)} style={styles.header}>
           <TouchableOpacity 
             onPress={() => step > 1 ? setStep(step - 1) : router.back()} 
-            style={styles.backButton}
+            style={[styles.backButton, { backgroundColor: colors.card }]}
           >
-            <ArrowLeft size={24} color="#2C3E50" />
+            <ArrowLeft size={24} color={colors.text} />
           </TouchableOpacity>
           <View style={styles.progressBar}>
-            <View style={[styles.progressFill, { width: `${(step / 3) * 100}%` }]} />
+            <View style={[styles.progressFill, { width: `${(step / 2) * 100}%` }]} />
           </View>
         </Animated.View>
         
-        {/* Prominent Skip Button */}
-        <Animated.View 
-          entering={FadeIn.delay(400).duration(220)}
-          style={styles.skipButtonContainer}
-        >
-          <TouchableOpacity 
-            onPress={handleSkip}
-            style={styles.skipButton}
-          >
-            <Text style={styles.skipButtonText}>I don't have a tank yet - Skip for now</Text>
-          </TouchableOpacity>
-        </Animated.View>
+
 
         <ScrollView 
           style={styles.scrollView}
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
         >
-          {/* Step 1: Tank Name & Type */}
+          {/* Step 1: Tank Name & Size */}
           {step === 1 && (
             <>
               <Animated.Text 
                 entering={FadeInDown.duration(220)}
-                style={styles.title}
+                style={[styles.title, { color: colors.text }]}
               >
                 Name your tank
               </Animated.Text>
               <Animated.Text 
                 entering={FadeInDown.delay(100).duration(220)}
-                style={styles.subtitle}
+                style={[styles.subtitle, { color: colors.textSecondary }]}
               >
                 What would you like to call your aquarium?
               </Animated.Text>
@@ -169,67 +173,24 @@ export default function CreateTankScreen() {
                   onChangeText={setTankName}
                   autoCapitalize="words"
                 />
+                {isDuplicateName && (
+                  <Text style={styles.duplicateError}>
+                    A tank with this name already exists
+                  </Text>
+                )}
               </Animated.View>
 
               <Animated.Text 
                 entering={FadeInDown.delay(300).duration(220)}
-                style={[styles.sectionTitle, { marginTop: 24 }]}
-              >
-                Tank shape
-              </Animated.Text>
-
-              <View style={styles.typeGrid}>
-                {tankTypes.map((item, index) => {
-                  const Icon = item.icon;
-                  const isSelected = tankType === item.type;
-                  return (
-                    <Animated.View
-                      key={item.type}
-                      entering={FadeInDown.delay(400 + index * 50).duration(220)}
-                      style={{ width: '48%' }}
-                    >
-                      <TouchableOpacity
-                        onPress={() => handleSelectType(item.type)}
-                        activeOpacity={0.8}
-                        style={[
-                          styles.typeCard,
-                          isSelected && styles.typeCardSelected,
-                        ]}
-                      >
-                        {isSelected && (
-                          <View style={styles.checkBadge}>
-                            <Check size={12} color="#fff" />
-                          </View>
-                        )}
-                        <Icon size={32} color={isSelected ? '#0D7377' : '#64748B'} />
-                        <Text style={[
-                          styles.typeLabel,
-                          isSelected && styles.typeLabelSelected,
-                        ]}>
-                          {item.label}
-                        </Text>
-                      </TouchableOpacity>
-                    </Animated.View>
-                  );
-                })}
-              </View>
-            </>
-          )}
-
-          {/* Step 2: Tank Size */}
-          {step === 2 && (
-            <>
-              <Animated.Text 
-                entering={FadeInDown.duration(220)}
-                style={styles.title}
+                style={[styles.sectionTitle, { marginTop: 24, color: colors.text }]}
               >
                 Tank size
               </Animated.Text>
               <Animated.Text 
-                entering={FadeInDown.delay(100).duration(220)}
-                style={styles.subtitle}
+                entering={FadeInDown.delay(350).duration(220)}
+                style={[styles.subtitle, { color: colors.textSecondary }]}
               >
-                How many gallons does your tank hold?
+                How big is your tank?
               </Animated.Text>
 
               <View style={styles.sizeGrid}>
@@ -238,7 +199,7 @@ export default function CreateTankScreen() {
                   return (
                     <Animated.View
                       key={size}
-                      entering={FadeInDown.delay(200 + index * 30).duration(220)}
+                      entering={FadeInDown.delay(400 + index * 30).duration(220)}
                     >
                       <TouchableOpacity
                         onPress={() => handleSelectSize(size)}
@@ -252,7 +213,7 @@ export default function CreateTankScreen() {
                           styles.sizeChipText,
                           isSelected && styles.sizeChipTextSelected,
                         ]}>
-                          {size}g
+                          {formatVolume(size)}
                         </Text>
                       </TouchableOpacity>
                     </Animated.View>
@@ -260,35 +221,45 @@ export default function CreateTankScreen() {
                 })}
               </View>
 
-              <Animated.View entering={FadeInDown.delay(500).duration(220)} style={styles.customSizeContainer}>
-                <Text style={styles.orText}>or enter custom size</Text>
+              <Animated.View entering={FadeInDown.delay(650).duration(220)} style={styles.customSizeContainer}>
+                <Text style={[styles.orText, { color: colors.textSecondary }]}>or enter custom size</Text>
                 <View style={styles.customInputRow}>
                   <TextInput
-                    style={styles.customInput}
+                    style={[styles.customInput, { backgroundColor: colors.card, color: colors.text, borderColor: colors.border }]}
                     placeholder="0"
+                    placeholderTextColor={colors.textSecondary}
                     value={customSize}
-                    onChangeText={setCustomSize}
+                    onChangeText={(text) => {
+                      const numValue = parseInt(text) || 0;
+                      if (numValue <= 1000) {
+                        setCustomSize(text.replace(/[^0-9]/g, ''));
+                      } else {
+                        setCustomSize('1000');
+                      }
+                    }}
                     keyboardType="numeric"
-                    placeholderTextColor="#94A3B8"
+                    maxLength={4}
                   />
-                  <Text style={styles.gallonsText}>gallons</Text>
+                  <Text style={[styles.gallonsText, { color: colors.textSecondary }]}>{volumeUnit}</Text>
                 </View>
               </Animated.View>
             </>
           )}
 
-          {/* Step 3: Water Type */}
-          {step === 3 && (
+
+
+          {/* Step 2: Water Type */}
+          {step === 2 && (
             <>
               <Animated.Text 
                 entering={FadeInDown.duration(220)}
-                style={styles.title}
+                style={[styles.title, { color: colors.text }]}
               >
                 Water type
               </Animated.Text>
               <Animated.Text 
                 entering={FadeInDown.delay(100).duration(220)}
-                style={styles.subtitle}
+                style={[styles.subtitle, { color: colors.textSecondary }]}
               >
                 What kind of aquarium are you setting up?
               </Animated.Text>
@@ -298,20 +269,20 @@ export default function CreateTankScreen() {
                   onPress={() => handleSelectWaterType('freshwater')}
                   activeOpacity={0.8}
                 >
-                  <GlassCard 
-                    style={StyleSheet.flatten([
-                      styles.waterTypeCard,
-                      waterType === 'freshwater' && styles.waterTypeCardSelected,
-                    ])}
-                    animated={false}
-                  >
-                    <View style={[styles.waterTypeIcon, { backgroundColor: 'rgba(78, 205, 196, 0.2)' }]}>
-                      <Droplets size={32} color="#4ECDC4" />
-                    </View>
-                    <View style={styles.waterTypeInfo}>
-                      <Text style={styles.waterTypeName}>Freshwater</Text>
-                      <Text style={styles.waterTypeDesc}>Most common setup for beginners</Text>
-                    </View>
+                    <GlassCard 
+                      style={[
+                        styles.waterTypeCard,
+                        waterType === 'freshwater' && [styles.waterTypeCardSelected, { borderColor: colors.primary, backgroundColor: activeTheme === 'dark' ? 'rgba(78, 205, 196, 0.1)' : 'rgba(13, 115, 119, 0.05)' }],
+                      ]}
+                      animated={false}
+                    >
+                      <View style={[styles.waterTypeIcon, { backgroundColor: 'rgba(78, 205, 196, 0.2)' }]}>
+                        <Droplets size={32} color="#4ECDC4" />
+                      </View>
+                      <View style={styles.waterTypeInfo}>
+                        <Text style={[styles.waterTypeName, { color: colors.text }]}>Freshwater</Text>
+                        <Text style={[styles.waterTypeDesc, { color: colors.textSecondary }]}>Most common setup for beginners</Text>
+                      </View>
                     {waterType === 'freshwater' && (
                       <View style={styles.waterTypeCheck}>
                         <Check size={20} color="#0D7377" />
@@ -327,18 +298,18 @@ export default function CreateTankScreen() {
                   activeOpacity={0.8}
                 >
                   <GlassCard 
-                    style={StyleSheet.flatten([
+                    style={[
                       styles.waterTypeCard,
-                      waterType === 'saltwater' && styles.waterTypeCardSelected,
-                    ])}
+                      waterType === 'saltwater' && [styles.waterTypeCardSelected, { borderColor: '#2196F3', backgroundColor: 'rgba(33, 150, 243, 0.05)' }],
+                    ]}
                     animated={false}
                   >
                     <View style={[styles.waterTypeIcon, { backgroundColor: 'rgba(33, 150, 243, 0.2)' }]}>
                       <Droplets size={32} color="#2196F3" />
                     </View>
                     <View style={styles.waterTypeInfo}>
-                      <Text style={styles.waterTypeName}>Saltwater</Text>
-                      <Text style={styles.waterTypeDesc}>Marine fish and corals</Text>
+                      <Text style={[styles.waterTypeName, { color: colors.text }]}>Saltwater</Text>
+                      <Text style={[styles.waterTypeDesc, { color: colors.textSecondary }]}>Marine fish and corals</Text>
                     </View>
                     {waterType === 'saltwater' && (
                       <View style={styles.waterTypeCheck}>
@@ -350,23 +321,19 @@ export default function CreateTankScreen() {
               </Animated.View>
 
               {/* Summary */}
-              <Animated.View entering={FadeInDown.delay(400).duration(220)} style={styles.summaryCard}>
-                <Text style={styles.summaryTitle}>Your tank summary</Text>
-                <View style={styles.summaryRow}>
-                  <Text style={styles.summaryLabel}>Name</Text>
-                  <Text style={styles.summaryValue}>{tankName}</Text>
+              <Animated.View entering={FadeInDown.delay(400).duration(220)} style={[styles.summaryCard, { backgroundColor: colors.card }]}>
+                <Text style={[styles.summaryTitle, { color: colors.text }]}>Your tank summary</Text>
+                <View style={[styles.summaryRow, { borderBottomColor: colors.border }]}>
+                  <Text style={[styles.summaryLabel, { color: colors.textSecondary }]}>Name</Text>
+                  <Text style={[styles.summaryValue, { color: colors.text }]}>{tankName}</Text>
+                </View>
+                <View style={[styles.summaryRow, { borderBottomColor: colors.border }]}>
+                  <Text style={[styles.summaryLabel, { color: colors.textSecondary }]}>Size</Text>
+                  <Text style={[styles.summaryValue, { color: colors.text }]}>{formatVolume(customSize ? parseInt(customSize) : tankSize)}</Text>
                 </View>
                 <View style={styles.summaryRow}>
-                  <Text style={styles.summaryLabel}>Type</Text>
-                  <Text style={styles.summaryValue}>{tankType}</Text>
-                </View>
-                <View style={styles.summaryRow}>
-                  <Text style={styles.summaryLabel}>Size</Text>
-                  <Text style={styles.summaryValue}>{customSize || tankSize} gallons</Text>
-                </View>
-                <View style={styles.summaryRow}>
-                  <Text style={styles.summaryLabel}>Water</Text>
-                  <Text style={styles.summaryValue}>{waterType}</Text>
+                  <Text style={[styles.summaryLabel, { color: colors.textSecondary }]}>Water</Text>
+                  <Text style={[styles.summaryValue, { color: colors.text }]}>{waterType}</Text>
                 </View>
               </Animated.View>
             </>
@@ -378,7 +345,7 @@ export default function CreateTankScreen() {
           entering={FadeIn.delay(500).duration(220)}
           style={styles.ctaContainer}
         >
-          {step < 3 ? (
+          {step < 2 ? (
             <Button
               title="Continue"
               onPress={handleNext}
@@ -395,6 +362,16 @@ export default function CreateTankScreen() {
               size="large"
               fullWidth
             />
+          )}
+          
+          {/* Skip Button - Only shown during onboarding */}
+          {isOnboarding && (
+            <TouchableOpacity 
+              onPress={handleSkip}
+              style={[styles.skipButton, { backgroundColor: colors.card, borderColor: colors.border }]}
+            >
+              <Text style={[styles.skipButtonText, { color: colors.textSecondary }]}>I don't have a tank yet - Skip for now</Text>
+            </TouchableOpacity>
           )}
         </Animated.View>
       </SafeAreaView>
@@ -424,14 +401,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  skipButtonContainer: {
-    paddingHorizontal: 24,
-    paddingTop: 8,
-    paddingBottom: 16,
-  },
   skipButton: {
     paddingVertical: 14,
     paddingHorizontal: 20,
+    marginTop: 12,
     borderRadius: 14,
     backgroundColor: 'rgba(255, 255, 255, 0.9)',
     borderWidth: 1,
@@ -443,6 +416,12 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#64748B',
     textAlign: 'center',
+  },
+  duplicateError: {
+    fontSize: 13,
+    color: '#E53E3E',
+    marginTop: 8,
+    fontWeight: '500',
   },
   progressBar: {
     flex: 1,

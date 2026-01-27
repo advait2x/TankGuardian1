@@ -1,8 +1,6 @@
 import "../global.css";
-import {
-  DefaultTheme,
-  ThemeProvider,
-} from "@react-navigation/native";
+import { ThemeProvider as NavigationThemeProvider, DefaultTheme, DarkTheme } from "@react-navigation/native";
+import { ThemeProvider, useTheme } from "@/store/ThemeContext";
 import { useFonts } from "expo-font";
 import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
@@ -15,19 +13,55 @@ import { AppProvider } from "@/store/AppContext";
 import { AuthProvider } from "@/store/AuthContext";
 import { ToastProvider } from "@/components/ui/Toast";
 import { MascotProvider } from "@/components/mascot/MascotContext";
+import { UnitSettingsProvider } from "@/store/UnitSettingsContext";
+import { QueryClientProvider } from "@/store/QueryClientProvider";
 import { listFishSpecies } from "@/utils/remoteFishCatalog";
 
 // Prevent the splash screen from auto-hiding before asset loading is complete.
 SplashScreen.preventAutoHideAsync();
 
-const CustomTheme = {
-  ...DefaultTheme,
-  colors: {
-    ...DefaultTheme.colors,
-    background: '#E8F4F8',
-    primary: '#0D7377',
-  },
-};
+function AppContent() {
+  const { activeTheme } = useTheme();
+  
+  const CurrentTheme = activeTheme === 'dark' ? {
+    ...DarkTheme,
+    colors: {
+      ...DarkTheme.colors,
+      background: '#121212', // Deep dark background
+      primary: '#0D7377',
+      card: '#1E1E1E',
+      text: '#FFFFFF',
+      border: '#333333',
+    }
+  } : {
+    ...DefaultTheme,
+    colors: {
+      ...DefaultTheme.colors,
+      background: '#E8F4F8',
+      primary: '#0D7377',
+    }
+  };
+
+  return (
+    <NavigationThemeProvider value={CurrentTheme}>
+      <Stack
+        screenOptions={({ route }) => ({
+          headerShown: false,
+          animation: 'slide_from_right',
+          contentStyle: { backgroundColor: CurrentTheme.colors.background },
+        })}
+      >
+        <Stack.Screen name="index" />
+        <Stack.Screen name="landing" />
+        <Stack.Screen name="login" />
+        <Stack.Screen name="signup" />
+        <Stack.Screen name="onboarding" options={{ gestureEnabled: false }} />
+        <Stack.Screen name="(tabs)" options={{ gestureEnabled: false }} />
+      </Stack>
+      <StatusBar style={activeTheme === 'dark' ? 'light' : 'dark'} />
+    </NavigationThemeProvider>
+  );
+}
 
 export default function RootLayout() {
   const [loaded] = useFonts({
@@ -66,32 +100,21 @@ export default function RootLayout() {
   return (
     <SafeAreaProvider>
     <GestureHandlerRootView style={{ flex: 1 }}>
+      <QueryClientProvider>
       <AuthProvider>
         <AppProvider>
+          <UnitSettingsProvider>
           <ToastProvider>
               <MascotProvider>
-            <ThemeProvider value={CustomTheme}>
-              <Stack
-                screenOptions={({ route }) => ({
-                  headerShown: false,
-                  animation: 'slide_from_right',
-                  contentStyle: { backgroundColor: '#E8F4F8' },
-                })}
-              >
-                <Stack.Screen name="index" />
-                <Stack.Screen name="landing" />
-                <Stack.Screen name="login" />
-                <Stack.Screen name="signup" />
-                <Stack.Screen name="auth-otp" />
-                <Stack.Screen name="onboarding" options={{ gestureEnabled: false }} />
-                <Stack.Screen name="(tabs)" options={{ gestureEnabled: false }} />
-              </Stack>
-              <StatusBar style="dark" />
-            </ThemeProvider>
+                <ThemeProvider>
+                  <AppContent />
+                </ThemeProvider>
               </MascotProvider>
           </ToastProvider>
+          </UnitSettingsProvider>
         </AppProvider>
       </AuthProvider>
+      </QueryClientProvider>
     </GestureHandlerRootView>
     </SafeAreaProvider>
   );

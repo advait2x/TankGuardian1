@@ -9,6 +9,7 @@ import Button from '@/components/ui/Button';
 import GlassCard from '@/components/ui/GlassCard';
 import { useApp } from '@/store/AppContext';
 import { useToast } from '@/components/ui/Toast';
+import { useTheme } from '@/store/ThemeContext';
 import * as Haptics from 'expo-haptics';
 
 const benefits = [
@@ -22,6 +23,7 @@ export default function PaywallScreen() {
   const router = useRouter();
   const { setPremium, useFreeTrial, hasUsedFreeTrial, tanks } = useApp();
   const { showToast } = useToast();
+  const { colors, activeTheme } = useTheme();
   const [selectedPlan, setSelectedPlan] = useState<'monthly' | 'yearly'>('yearly');
 
   const handleStartTrial = async () => {
@@ -50,17 +52,17 @@ export default function PaywallScreen() {
   };
 
   return (
-    <View style={styles.container}>
-      <AnimatedBackground />
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
+      <AnimatedBackground variant={activeTheme === 'dark' ? 'dark' : 'light'} />
       
       <SafeAreaView style={styles.safeArea}>
         {/* Header */}
         <Animated.View entering={FadeInDown.duration(300)} style={styles.header}>
           <TouchableOpacity 
             onPress={() => router.back()} 
-            style={styles.backButton}
+            style={[styles.backButton, { backgroundColor: colors.card }]}
           >
-            <ArrowLeft size={24} color="#2C3E50" />
+            <ArrowLeft size={24} color={colors.text} />
           </TouchableOpacity>
           <View style={styles.progressBar}>
             <View style={[styles.progressFill, { width: '66%' }]} />
@@ -85,13 +87,13 @@ export default function PaywallScreen() {
           {/* Title */}
           <Animated.Text 
             entering={FadeInDown.delay(200).duration(220)}
-            style={styles.title}
+            style={[styles.title, { color: colors.text }]}
           >
             Unlock Premium
           </Animated.Text>
           <Animated.Text 
             entering={FadeInDown.delay(300).duration(220)}
-            style={styles.subtitle}
+            style={[styles.subtitle, { color: colors.textSecondary }]}
           >
             Get unlimited access to all features and keep your fish thriving
           </Animated.Text>
@@ -107,10 +109,11 @@ export default function PaywallScreen() {
               activeOpacity={0.8}
             >
               <GlassCard 
-                style={StyleSheet.flatten([
+                style={[
                   styles.planCard,
-                  selectedPlan === 'yearly' && styles.planCardSelected,
-                ])}
+                  { backgroundColor: colors.card, borderColor: colors.border },
+                  selectedPlan === 'yearly' && [styles.planCardSelected, { borderColor: colors.primary, backgroundColor: activeTheme === 'dark' ? 'rgba(13, 115, 119, 0.3)' : 'rgba(13, 115, 119, 0.08)' }],
+                 ]}
                 animated={false}
               >
                 {selectedPlan === 'yearly' && (
@@ -125,9 +128,9 @@ export default function PaywallScreen() {
                     )}
                   </View>
                   <View style={styles.planInfo}>
-                    <Text style={styles.planName}>Yearly</Text>
-                    <Text style={styles.planPrice}>
-                      <Text style={styles.planPriceValue}>$39.99</Text>/year
+                    <Text style={[styles.planName, { color: colors.text }]}>Yearly</Text>
+                    <Text style={[styles.planPrice, { color: colors.textSecondary }]}>
+                      <Text style={[styles.planPriceValue, { color: colors.text }]}>$39.99</Text>/year
                     </Text>
                   </View>
                   <Text style={styles.planSavings}>Save 50%</Text>
@@ -141,22 +144,23 @@ export default function PaywallScreen() {
               activeOpacity={0.8}
             >
               <GlassCard 
-                style={StyleSheet.flatten([
+                style={[
                   styles.planCard,
-                  selectedPlan === 'monthly' && styles.planCardSelected,
-                ])}
+                  { backgroundColor: colors.card, borderColor: colors.border },
+                  selectedPlan === 'monthly' && [styles.planCardSelected, { borderColor: colors.primary, backgroundColor: activeTheme === 'dark' ? 'rgba(13, 115, 119, 0.3)' : 'rgba(13, 115, 119, 0.08)' }],
+                ]}
                 animated={false}
               >
                 <View style={styles.planHeader}>
-                  <View style={styles.planRadio}>
+                  <View style={[styles.planRadio, { borderColor: colors.primary }]}>
                     {selectedPlan === 'monthly' && (
-                      <View style={styles.planRadioInner} />
+                      <View style={[styles.planRadioInner, { backgroundColor: colors.primary }]} />
                     )}
                   </View>
                   <View style={styles.planInfo}>
-                    <Text style={styles.planName}>Monthly</Text>
-                    <Text style={styles.planPrice}>
-                      <Text style={styles.planPriceValue}>$6.99</Text>/month
+                    <Text style={[styles.planName, { color: colors.text }]}>Monthly</Text>
+                    <Text style={[styles.planPrice, { color: colors.textSecondary }]}>
+                      <Text style={[styles.planPriceValue, { color: colors.text }]}>$6.99</Text>/month
                     </Text>
                   </View>
                 </View>
@@ -173,10 +177,10 @@ export default function PaywallScreen() {
               const Icon = benefit.icon;
               return (
                 <View key={index} style={styles.benefitItem}>
-                  <View style={styles.benefitIcon}>
-                    <Check size={18} color="#0D7377" />
+                  <View style={[styles.benefitIcon, { backgroundColor: activeTheme === 'dark' ? 'rgba(13, 115, 119, 0.2)' : 'rgba(13, 115, 119, 0.1)' }]}>
+                    <Check size={18} color={colors.primary} />
                   </View>
-                  <Text style={styles.benefitText}>{benefit.text}</Text>
+                  <Text style={[styles.benefitText, { color: colors.text }]}>{benefit.text}</Text>
                 </View>
               );
             })}

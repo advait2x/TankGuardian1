@@ -6,11 +6,14 @@ import { Users, Sparkles } from 'lucide-react-native';
 import AnimatedBackground from '@/components/ui/AnimatedBackground';
 import GlassCard from '@/components/ui/GlassCard';
 import MascotIcon from '@/components/mascot/MascotIcon';
+import { useTheme } from '@/store/ThemeContext';
 
 export default function CommunityScreen() {
+  const { colors, activeTheme } = useTheme();
+
   return (
-    <View style={styles.container}>
-      <AnimatedBackground />
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
+      <AnimatedBackground variant={activeTheme === 'dark' ? 'dark' : 'light'} />
       
       <SafeAreaView style={styles.safeArea}>
         <Animated.View entering={FadeInDown.duration(400)} style={styles.content}>
@@ -18,34 +21,34 @@ export default function CommunityScreen() {
           
           <GlassCard style={styles.card}>
             <View style={styles.iconContainer}>
-              <Users size={48} color="#0D7377" />
+              <Users size={48} color={colors.primary} />
               <View style={styles.sparkleContainer}>
                 <Sparkles size={24} color="#FFD700" />
               </View>
             </View>
             
-            <Text style={styles.title}>Community Coming Soon!</Text>
+            <Text style={[styles.title, { color: colors.text }]}>Community Coming Soon!</Text>
             
-            <Text style={styles.description}>
+            <Text style={[styles.description, { color: colors.textSecondary }]}>
               We're building something amazing! Connect with fellow aquarium enthusiasts, share your tanks, and learn from the community.
             </Text>
             
             <View style={styles.features}>
               <View style={styles.feature}>
                 <Text style={styles.featureBullet}>🐠</Text>
-                <Text style={styles.featureText}>Share tank photos & setups</Text>
+                <Text style={[styles.featureText, { color: colors.textSecondary }]}>Share tank photos & setups</Text>
               </View>
               <View style={styles.feature}>
                 <Text style={styles.featureBullet}>💬</Text>
-                <Text style={styles.featureText}>Get advice from experts</Text>
+                <Text style={[styles.featureText, { color: colors.textSecondary }]}>Get advice from experts</Text>
               </View>
               <View style={styles.feature}>
                 <Text style={styles.featureBullet}>🏆</Text>
-                <Text style={styles.featureText}>Join challenges & events</Text>
+                <Text style={[styles.featureText, { color: colors.textSecondary }]}>Join challenges & events</Text>
               </View>
             </View>
             
-            <Text style={styles.comingSoon}>Stay tuned for updates!</Text>
+            <Text style={[styles.comingSoon, { color: colors.primary }]}>Stay tuned for updates!</Text>
           </GlassCard>
         </Animated.View>
       </SafeAreaView>

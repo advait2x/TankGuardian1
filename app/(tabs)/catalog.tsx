@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -24,14 +24,17 @@ import Modal from '@/components/ui/Modal';
 import AddToTankSheet from '@/components/sheets/AddToTankSheet';
 import { useMascot } from '@/components/mascot/MascotContext';
 import { useApp } from '@/store/AppContext';
+import { useUnitSettings } from '@/store/UnitSettingsContext';
 import { useToast } from '@/components/ui/Toast';
 import { fishSpecies as mockFishSpecies, plants, equipment, decor, generateId } from '@/data/mockData';
-import { FishSpecies } from '@/data/types';
-import { getFishCatalog } from '@/utils/fishCatalogAdapter';
-import { getFloraCatalog, FloraItem } from '@/utils/floraCatalogAdapter';
-import { getHardscapeCatalog, HardscapeItem } from '@/utils/hardscapeCatalogAdapter';
+import { FishSpecies, Tank, FishInstance } from '@/data/types';
+import { FloraItem } from '@/utils/floraCatalogAdapter';
+import { HardscapeItem } from '@/utils/hardscapeCatalogAdapter';
 import { getSpeciesBySlugSync } from '@/utils/tankSpeciesLookup';
+import { useFishCatalog, useFloraCatalog, useHardscapeCatalog } from '@/hooks/useCatalogQueries';
+
 import * as Haptics from 'expo-haptics';
+import { useTheme } from '@/store/ThemeContext';
 
 type CatalogTab = 'fish' | 'plants' | 'decor' | 'equipment';
 
@@ -48,25 +51,22 @@ const difficultyFilters = ['easy', 'medium', 'hard'];
 export default function CatalogScreen() {
   const router = useRouter();
   const { tanks, selectedTankId, addFishToTank, addFishInstances, isPremium } = useApp();
+  const { formatVolume, formatLength, volumeUnit, lengthUnit } = useUnitSettings();
   const { showToast } = useToast();
+
   const { showMascot, hideMascot } = useMascot();
+  const { colors, activeTheme } = useTheme();
   
   const [activeTab, setActiveTab] = useState<CatalogTab>('fish');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedTemperament, setSelectedTemperament] = useState<string[]>([]);
   const [selectedDifficulty, setSelectedDifficulty] = useState<string[]>([]);
-  const [selectedWaterType, setSelectedWaterType] = useState<string[]>([]); // NEW: Water type filter
+  const [selectedWaterType, setSelectedWaterType] = useState<string[]>([]); // Water type filter
   const [showFilters, setShowFilters] = useState(false);
   const [selectedSpecies, setSelectedSpecies] = useState<FishSpecies | null>(null);
   const [showCompatibilityModal, setShowCompatibilityModal] = useState(false);
   const [showAddToTankSheet, setShowAddToTankSheet] = useState(false);
   const [compatibilityWarnings, setCompatibilityWarnings] = useState<string[]>([]);
-  const [fishCatalog, setFishCatalog] = useState<FishSpecies[]>(mockFishSpecies);
-  const [isLoadingFish, setIsLoadingFish] = useState(false);
-  const [floraCatalog, setFloraCatalog] = useState<FloraItem[]>([]);
-  const [isLoadingFlora, setIsLoadingFlora] = useState(false);
-  const [hardscapeCatalog, setHardscapeCatalog] = useState<HardscapeItem[]>([]);
-  const [isLoadingHardscape, setIsLoadingHardscape] = useState(false);
   const [showPaywall, setShowPaywall] = useState(false);
   const [selectedFlora, setSelectedFlora] = useState<FloraItem | null>(null);
   const [showFloraModal, setShowFloraModal] = useState(false);
@@ -75,124 +75,39 @@ export default function CatalogScreen() {
 
   const selectedTank = tanks.find(t => t.id === selectedTankId);
 
-  // Load fish catalog on mount and when search/filters change
-  useEffect(() => {
-    if (activeTab !== 'fish') return;
-    
-    let mounted = true;
-    setIsLoadingFish(true);
+  // Determine waterType for database query (if exactly one type is selected)
+  const dbWaterType = selectedWaterType.length === 1 
+    ? (selectedWaterType[0] as 'freshwater' | 'saltwater' | 'brackish')
+    : undefined;
 
-    // Determine waterType for database query (if exactly one type is selected)
-    const dbWaterType = selectedWaterType.length === 1 
-      ? (selectedWaterType[0] as 'freshwater' | 'saltwater' | 'brackish')
-      : undefined; // Don't filter if 0 or multiple selected
+  // React Query hooks for catalog data with automatic caching
+  const { 
+    data: fishCatalog = mockFishSpecies, 
+    isLoading: isLoadingFish 
+  } = useFishCatalog({ 
+    search: searchQuery, 
+    waterType: dbWaterType 
+  });
 
-    if (__DEV__ && dbWaterType) {
-      console.log('[Catalog] waterType filter:', dbWaterType);
-    }
+  const { 
+    data: floraCatalog = [], 
+    isLoading: isLoadingFlora 
+  } = useFloraCatalog({ 
+    search: searchQuery, 
+    waterType: dbWaterType,
+    difficulty: selectedDifficulty.length === 1 ? selectedDifficulty[0] as 'easy' | 'medium' | 'hard' : undefined
+  });
 
-    getFishCatalog({ 
-      search: searchQuery,
-      waterType: dbWaterType 
-    })
-      .then(catalog => {
-        if (mounted) {
-          setFishCatalog(catalog);
-          setIsLoadingFish(false);
-        }
-      })
-      .catch(() => {
-        if (mounted) {
-          // On error, use mock data
-          setFishCatalog(mockFishSpecies);
-          setIsLoadingFish(false);
-        }
-      });
+  const { 
+    data: hardscapeCatalog = [], 
+    isLoading: isLoadingHardscape 
+  } = useHardscapeCatalog({ 
+    search: searchQuery, 
+    waterType: dbWaterType 
+  });
 
-    return () => {
-      mounted = false;
-    };
-  }, [activeTab, searchQuery, selectedWaterType]); // Added selectedWaterType dependency
-
-  // Load flora catalog when plants tab is active
-  useEffect(() => {
-    if (activeTab !== 'plants') return;
-    
-    let mounted = true;
-    setIsLoadingFlora(true);
-
-    // Determine waterType for database query (if exactly one type is selected)
-    const dbWaterType = selectedWaterType.length === 1 
-      ? (selectedWaterType[0] as 'freshwater' | 'saltwater' | 'brackish')
-      : undefined;
-
-    if (__DEV__ && dbWaterType) {
-      console.log('[Catalog] Flora waterType filter:', dbWaterType);
-    }
-
-    getFloraCatalog({ 
-      search: searchQuery,
-      waterType: dbWaterType,
-      difficulty: selectedDifficulty.length === 1 ? selectedDifficulty[0] as 'easy' | 'medium' | 'hard' : undefined
-    })
-      .then(catalog => {
-        if (mounted) {
-          setFloraCatalog(catalog);
-          setIsLoadingFlora(false);
-        }
-      })
-      .catch(() => {
-        if (mounted) {
-          setFloraCatalog([]);
-          setIsLoadingFlora(false);
-        }
-      });
-
-    return () => {
-      mounted = false;
-    };
-  }, [activeTab, searchQuery, selectedWaterType, selectedDifficulty]);
-
-  // Load hardscape catalog when decor tab is active
-  useEffect(() => {
-    if (activeTab !== 'decor') return;
-    
-    let mounted = true;
-    setIsLoadingHardscape(true);
-
-    // Determine waterType for database query (if exactly one type is selected)
-    const dbWaterType = selectedWaterType.length === 1 
-      ? (selectedWaterType[0] as 'freshwater' | 'saltwater' | 'brackish')
-      : undefined;
-
-    if (__DEV__ && dbWaterType) {
-      console.log('[Catalog] Hardscape waterType filter:', dbWaterType);
-    }
-
-    getHardscapeCatalog({ 
-      search: searchQuery,
-      waterType: dbWaterType
-    })
-      .then(catalog => {
-        if (mounted) {
-          setHardscapeCatalog(catalog);
-          setIsLoadingHardscape(false);
-        }
-      })
-      .catch(() => {
-        if (mounted) {
-          setHardscapeCatalog([]);
-          setIsLoadingHardscape(false);
-        }
-      });
-
-    return () => {
-      mounted = false;
-    };
-  }, [activeTab, searchQuery, selectedWaterType]);
-
-  useEffect(() => {
-    // Show search mascot on catalog screen briefly
+  // Show search mascot on catalog screen briefly
+  React.useEffect(() => {
     showMascot('search', 'top-right', 'Tap any fish to check compatibility!', 3000);
     return () => {
       hideMascot();
@@ -227,7 +142,7 @@ export default function CatalogScreen() {
     }
 
     const existingFish = tank.fishInstances
-      .map(f => getSpeciesBySlugSync(f.speciesId, f))
+      .map((f: FishInstance) => getSpeciesBySlugSync(f.speciesId, f))
       .filter(Boolean) as FishSpecies[];
 
     // Track temperament conflicts to avoid duplicates
@@ -334,56 +249,48 @@ export default function CatalogScreen() {
   const activeFiltersCount = selectedTemperament.length + selectedDifficulty.length + selectedWaterType.length;
 
   return (
-    <View style={styles.container}>
-      <AnimatedBackground variant="light" />
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
+      <AnimatedBackground variant={activeTheme === 'dark' ? 'dark' : 'light'} />
       
       <SafeAreaView style={styles.safeArea} edges={['top']}>
+        {/* Header */}
         <Animated.View entering={FadeInDown.duration(220)} style={styles.header}>
-          <Text style={styles.title}>Catalog</Text>
-        </Animated.View>
-
-        <Animated.View entering={FadeInDown.delay(60).duration(220)} style={styles.searchContainer}>
-          <View style={styles.searchInputContainer}>
-            <Search size={20} color="#64748B" />
-            <TextInput
-              style={styles.searchInput}
-              placeholder="Search species..."
-              value={searchQuery}
-              onChangeText={setSearchQuery}
-              placeholderTextColor="#94A3B8"
-            />
-            {searchQuery.length > 0 && (
-              <TouchableOpacity onPress={() => setSearchQuery('')}>
-                <X size={18} color="#64748B" />
-              </TouchableOpacity>
-            )}
+          <Text style={[styles.title, { color: colors.text }]}>Catalog</Text>
+          <View style={[styles.tankBadge, { backgroundColor: colors.tankBackground, borderColor: colors.border }]}>
+            <Text style={[styles.tankBadgeText, { color: colors.textSecondary }]}>for {selectedTank?.name}</Text>
           </View>
-          <TouchableOpacity 
-            style={[styles.filterButton, activeFiltersCount > 0 && styles.filterButtonActive]}
-            onPress={() => setShowFilters(true)}
-          >
-            <Filter size={20} color={activeFiltersCount > 0 ? '#fff' : '#0D7377'} />
-            {activeFiltersCount > 0 && (
-              <View style={styles.filterBadge}>
-                <Text style={styles.filterBadgeText}>{activeFiltersCount}</Text>
-              </View>
-            )}
-          </TouchableOpacity>
         </Animated.View>
 
-        <Animated.View entering={FadeInDown.delay(120).duration(220)} style={styles.tabsContainer}>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tabs}>
+        {/* Tab Selector */}
+        <Animated.View entering={FadeInDown.delay(100).duration(220)} style={styles.tabContainer}>
+          <ScrollView 
+            horizontal 
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.tabContent}
+          >
             {tabs.map((tab) => {
-              const Icon = tab.icon;
               const isActive = activeTab === tab.id;
+              const Icon = tab.icon;
               return (
                 <TouchableOpacity
                   key={tab.id}
-                  style={[styles.tab, isActive && styles.tabActive]}
+                  style={[
+                    styles.tabItem,
+                    isActive && { backgroundColor: colors.primary, borderColor: colors.primary },
+                    !isActive && { backgroundColor: colors.card, borderColor: colors.border }
+                  ]}
                   onPress={() => setActiveTab(tab.id)}
                 >
-                  <Icon size={18} color={isActive ? '#fff' : '#64748B'} />
-                  <Text style={[styles.tabLabel, isActive && styles.tabLabelActive]}>
+                  {tab.id === 'fish' ? (
+                     <MascotIcon variant="search" size={20} withHalo={false} />
+                  ) : (
+                    <Icon size={20} color={isActive ? '#FFF' : colors.textSecondary} />
+                  )}
+                  <Text style={[
+                    styles.tabLabel,
+                    isActive && styles.activeTabLabel,
+                    !isActive && { color: colors.textSecondary }
+                  ]}>
                     {tab.label}
                   </Text>
                 </TouchableOpacity>
@@ -392,6 +299,69 @@ export default function CatalogScreen() {
           </ScrollView>
         </Animated.View>
 
+        {/* Search & Filter */}
+        <View style={styles.searchSection}>
+          <View style={[styles.searchBar, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <Search size={20} color={colors.textSecondary} />
+            <TextInput
+              style={[styles.searchInput, { color: colors.text }]}
+              placeholder={`Search ${activeTab}...`}
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              placeholderTextColor={colors.textSecondary}
+              returnKeyType="search"
+            />
+            {searchQuery.length > 0 && (
+              <TouchableOpacity onPress={() => setSearchQuery('')}>
+                <X size={18} color={colors.textSecondary} />
+              </TouchableOpacity>
+            )}
+          </View>
+          <TouchableOpacity 
+            style={[
+              styles.filterButton, 
+              showFilters && { backgroundColor: colors.primary, borderColor: colors.primary },
+              !showFilters && { backgroundColor: colors.card, borderColor: colors.border }
+            ]}
+            onPress={() => setShowFilters(!showFilters)}
+          >
+            <Filter size={20} color={showFilters ? '#FFF' : colors.textSecondary} />
+          </TouchableOpacity>
+        </View>
+
+        {/* Filters Panel */}
+        {showFilters && (
+          <Animated.View entering={FadeInDown.duration(200)} style={styles.filtersPanel}>
+            <View style={styles.filterGroup}>
+              <Text style={[styles.filterTitle, { color: colors.text }]}>Difficulty</Text>
+              <View style={styles.filterChips}>
+                {difficultyFilters.map(diff => (
+                  <Chip 
+                    key={diff}
+                    label={diff}
+                    selected={selectedDifficulty.includes(diff)}
+                    onPress={() => toggleFilter('difficulty', diff)}
+
+                  />
+                ))}
+              </View>
+            </View>
+            <View style={styles.filterGroup}>
+              <Text style={[styles.filterTitle, { color: colors.text }]}>Temperament</Text>
+              <View style={styles.filterChips}>
+                {temperamentFilters.map(temp => (
+                  <Chip 
+                    key={temp}
+                    label={temp}
+                    selected={selectedTemperament.includes(temp)}
+                    onPress={() => toggleFilter('temperament', temp)}
+
+                  />
+                ))}
+              </View>
+            </View>
+          </Animated.View>
+        )}
         <ScrollView
           style={styles.scrollView}
           contentContainerStyle={styles.scrollContent}
@@ -424,10 +394,10 @@ export default function CatalogScreen() {
                         <Text style={{ fontSize: 28 }}>🐠</Text>
                       </View>
                         )}
-                      <Text style={styles.fishCardName} numberOfLines={1}>
+                      <Text style={[styles.fishCardName, { color: colors.text }]} numberOfLines={1}>
                         {fish.commonName}
                       </Text>
-                      <Text style={styles.fishCardScientific} numberOfLines={1}>
+                      <Text style={[styles.fishCardScientific, { color: colors.textSecondary }]} numberOfLines={1}>
                         {fish.scientificName}
                       </Text>
                       <View style={styles.fishCardBadges}>
@@ -436,7 +406,7 @@ export default function CatalogScreen() {
                           variant={fish.difficulty === 'easy' ? 'success' : fish.difficulty === 'medium' ? 'warning' : 'danger'}
                           size="small"
                         />
-                        <Text style={styles.fishCardSize}>{fish.minTankGallons}g+</Text>
+                        <Text style={[styles.fishCardSize, { color: colors.textSecondary }]}>{formatVolume(fish.minTankGallons)}+</Text>
                       </View>
                     </GlassCard>
                   </Animated.View>
@@ -447,8 +417,8 @@ export default function CatalogScreen() {
               {filteredFish.length === 0 && (
                 <View style={styles.emptyState}>
                   <MascotIcon variant="search" size={80} />
-                  <Text style={styles.emptyTitle}>No fish found</Text>
-                  <Text style={styles.emptyText}>Try adjusting your filters or search</Text>
+                  <Text style={[styles.emptyTitle, { color: colors.text }]}>No fish found</Text>
+                  <Text style={[styles.emptyText, { color: colors.textSecondary }]}>Try adjusting your filters or search</Text>
                   {activeFiltersCount > 0 && (
                     <Button 
                       title="Clear Filters" 
@@ -483,10 +453,10 @@ export default function CatalogScreen() {
                         <View style={styles.fishCardIcon}>
                           <FishThumb imageKey={flora.imageKey ?? null} size={44} />
                         </View>
-                        <Text style={styles.fishCardName} numberOfLines={1}>
+                        <Text style={[styles.fishCardName, { color: colors.text }]} numberOfLines={1}>
                           {flora.commonName}
                         </Text>
-                        <Text style={styles.fishCardScientific} numberOfLines={1}>
+                        <Text style={[styles.fishCardScientific, { color: colors.textSecondary }]} numberOfLines={1}>
                           {flora.scientificName || flora.waterType}
                         </Text>
                         <View style={styles.fishCardBadges}>
@@ -535,10 +505,10 @@ export default function CatalogScreen() {
                     <View style={[styles.fishCardIcon, { backgroundColor: '#64748B' }]}>
                       <Wrench size={28} color="#fff" />
                     </View>
-                    <Text style={styles.fishCardName} numberOfLines={1}>
+                    <Text style={[styles.fishCardName, { color: colors.text }]} numberOfLines={1}>
                       {item.name}
                     </Text>
-                    <Text style={styles.fishCardScientific} numberOfLines={1}>
+                    <Text style={[styles.fishCardScientific, { color: colors.textSecondary }]} numberOfLines={1}>
                       {item.brand}
                     </Text>
                     <Badge label={item.type} variant="default" size="small" />
@@ -574,10 +544,10 @@ export default function CatalogScreen() {
                         <View style={styles.fishCardIcon}>
                           <FishThumb imageKey={item.imageKey ?? null} size={44} />
                         </View>
-                        <Text style={styles.fishCardName} numberOfLines={1}>
+                        <Text style={[styles.fishCardName, { color: colors.text }]} numberOfLines={1}>
                           {item.name}
                         </Text>
-                        <Text style={styles.fishCardScientific} numberOfLines={1}>
+                        <Text style={[styles.fishCardScientific, { color: colors.textSecondary }]} numberOfLines={1}>
                           {item.material || item.itemType}
                         </Text>
                         <Badge label={item.itemType} variant="default" size="small" />
@@ -687,7 +657,7 @@ export default function CatalogScreen() {
           setSelectedSpecies(null);
         }}
         title="Fish Details"
-        size="large"
+        size="full"
       >
         {selectedSpecies && (() => {
           const hasImage = (selectedSpecies as any).image_key || (selectedSpecies as any).imageKey;
@@ -705,41 +675,41 @@ export default function CatalogScreen() {
               </View>
                 )}
               <View style={styles.compatibilityInfo}>
-                <Text style={styles.compatibilityName}>{selectedSpecies.commonName}</Text>
-                <Text style={styles.compatibilityScientific}>{selectedSpecies.scientificName}</Text>
+                <Text style={[styles.compatibilityName, { color: colors.text }]}>{selectedSpecies.commonName}</Text>
+                <Text style={[styles.compatibilityScientific, { color: colors.textSecondary }]}>{selectedSpecies.scientificName}</Text>
               </View>
             </View>
 
             <View style={styles.compatibilityStats}>
-              <View style={styles.compatibilityStat}>
-                <Text style={styles.compatibilityStatLabel}>Min Tank</Text>
-                <Text style={styles.compatibilityStatValue}>{selectedSpecies.minTankGallons}g</Text>
+              <View style={[styles.compatibilityStat, { backgroundColor: colors.background }]}>
+                <Text style={[styles.compatibilityStatLabel, { color: colors.textSecondary }]}>Min Tank</Text>
+                <Text style={[styles.compatibilityStatValue, { color: colors.text }]}>{formatVolume(selectedSpecies.minTankGallons)}</Text>
               </View>
-              <View style={styles.compatibilityStat}>
-                <Text style={styles.compatibilityStatLabel}>Adult Size</Text>
-                <Text style={styles.compatibilityStatValue}>{selectedSpecies.adultSizeInches}"</Text>
+              <View style={[styles.compatibilityStat, { backgroundColor: colors.background }]}>
+                <Text style={[styles.compatibilityStatLabel, { color: colors.textSecondary }]}>Adult Size</Text>
+                <Text style={[styles.compatibilityStatValue, { color: colors.text }]}>{formatLength(selectedSpecies.adultSizeInches)}</Text>
               </View>
-              <View style={styles.compatibilityStat}>
-                <Text style={styles.compatibilityStatLabel}>Temperament</Text>
-                <Text style={styles.compatibilityStatValue}>{selectedSpecies.temperament}</Text>
+              <View style={[styles.compatibilityStat, { backgroundColor: colors.background }]}>
+                <Text style={[styles.compatibilityStatLabel, { color: colors.textSecondary }]}>Temperament</Text>
+                <Text style={[styles.compatibilityStatValue, { color: colors.text }]}>{selectedSpecies.temperament}</Text>
               </View>
               {selectedSpecies.tempMin !== undefined && selectedSpecies.tempMax !== undefined && (
-                <View style={styles.compatibilityStat}>
-                  <Text style={styles.compatibilityStatLabel}>Temp Range</Text>
-                  <Text style={styles.compatibilityStatValue}>{selectedSpecies.tempMin}-{selectedSpecies.tempMax}°F</Text>
+                <View style={[styles.compatibilityStat, { backgroundColor: colors.background }]}>
+                  <Text style={[styles.compatibilityStatLabel, { color: colors.textSecondary }]}>Temp Range</Text>
+                  <Text style={[styles.compatibilityStatValue, { color: colors.text }]}>{selectedSpecies.tempMin}-{selectedSpecies.tempMax}°F</Text>
                 </View>
               )}
               {selectedSpecies.phMin !== undefined && selectedSpecies.phMax !== undefined && (
-                <View style={styles.compatibilityStat}>
-                  <Text style={styles.compatibilityStatLabel}>pH Range</Text>
-                  <Text style={styles.compatibilityStatValue}>{selectedSpecies.phMin}-{selectedSpecies.phMax}</Text>
+                <View style={[styles.compatibilityStat, { backgroundColor: colors.background }]}>
+                  <Text style={[styles.compatibilityStatLabel, { color: colors.textSecondary }]}>pH Range</Text>
+                  <Text style={[styles.compatibilityStatValue, { color: colors.text }]}>{selectedSpecies.phMin}-{selectedSpecies.phMax}</Text>
                 </View>
               )}
             </View>
 
-            <View style={styles.careNotesContainer}>
-              <Text style={styles.careNotesTitle}>Care Notes</Text>
-              <Text style={styles.careNotesText}>{selectedSpecies.careNotes}</Text>
+            <View style={[styles.careNotesContainer, { backgroundColor: colors.card }]}>
+              <Text style={[styles.careNotesTitle, { color: colors.primary }]}>Care Notes</Text>
+              <Text style={[styles.careNotesText, { color: colors.text }]}>{selectedSpecies.careNotes}</Text>
             </View>
 
             <View style={styles.compatibilityActions}>
@@ -818,7 +788,7 @@ export default function CatalogScreen() {
           setSelectedFlora(null);
         }}
         title="Plant/Coral Details"
-        size="large"
+        size="full"
       >
         {selectedFlora && (
           <View style={styles.compatibilityContent}>
@@ -881,7 +851,7 @@ export default function CatalogScreen() {
           setSelectedHardscape(null);
         }}
         title="Decoration Details"
-        size="large"
+        size="full"
       >
         {selectedHardscape && (
           <View style={styles.compatibilityContent}>
@@ -1069,13 +1039,11 @@ const styles = StyleSheet.create({
   fishCardName: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#1A252F',
     textAlign: 'center',
     marginBottom: 2,
   },
   fishCardScientific: {
     fontSize: 11,
-    color: '#64748B',
     fontStyle: 'italic',
     textAlign: 'center',
     marginBottom: 8,
@@ -1087,7 +1055,6 @@ const styles = StyleSheet.create({
   },
   fishCardSize: {
     fontSize: 11,
-    color: '#64748B',
     fontWeight: '500',
   },
   emptyState: {
@@ -1105,6 +1072,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#64748B',
     marginBottom: 8,
+    textAlign: 'center',
   },
   bottomPadding: {
     height: 20,
@@ -1161,7 +1129,7 @@ const styles = StyleSheet.create({
   compatibilityStats: {
     flexDirection: 'row',
     justifyContent: 'space-around',
-    backgroundColor: 'rgba(13, 115, 119, 0.05)',
+
     borderRadius: 12,
     paddingVertical: 14,
   },
@@ -1247,5 +1215,66 @@ const styles = StyleSheet.create({
     color: '#94A3B8',
     textAlign: 'center',
     marginTop: 8,
+  },
+  tankBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 4,
+    paddingHorizontal: 10,
+    borderRadius: 12,
+    borderWidth: 1,
+    marginLeft: 8,
+  },
+  tankBadgeText: {
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  tabContainer: {
+    paddingBottom: 12,
+  },
+  tabContent: {
+    paddingHorizontal: 20,
+    gap: 8,
+  },
+  tabItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 20,
+    borderWidth: 1,
+    gap: 6,
+  },
+  activeTabLabel: {
+    color: '#fff',
+  },
+  searchSection: {
+    flexDirection: 'row',
+    paddingHorizontal: 20,
+    gap: 12,
+    marginBottom: 16,
+  },
+  searchBar: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    borderWidth: 1,
+    gap: 10,
+    height: 48,
+  },
+  filtersPanel: {
+    paddingHorizontal: 20,
+    marginBottom: 16,
+    gap: 16,
+  },
+  filterGroup: {
+    gap: 8,
+  },
+  filterTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    marginBottom: 8,
   },
 });

@@ -25,6 +25,7 @@ import ProgressBar from '@/components/ui/ProgressBar';
 import Modal from '@/components/ui/Modal';
 import { useApp } from '@/store/AppContext';
 import { useToast } from '@/components/ui/Toast';
+import { useTheme } from '@/store/ThemeContext';
 import * as Haptics from 'expo-haptics';
 
 export default function HomeScreen() {
@@ -32,6 +33,7 @@ export default function HomeScreen() {
   const { currentUser, tanks, selectedTankId, tasks, completeTask } = useApp();
   const { showToast } = useToast();
   const { showMascot, hideMascot } = useMascot();
+  const { colors, activeTheme } = useTheme();
   const [refreshing, setRefreshing] = useState(false);
   const [showRiskModal, setShowRiskModal] = useState(false);
 
@@ -80,8 +82,8 @@ export default function HomeScreen() {
   };
 
   return (
-    <View style={styles.container}>
-      <AnimatedBackground />
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
+      <AnimatedBackground variant={activeTheme === 'dark' ? 'dark' : 'light'} />
       
       <SafeAreaView style={styles.safeArea} edges={['top']}>
         <ScrollView
@@ -95,25 +97,25 @@ export default function HomeScreen() {
           {/* Header */}
           <Animated.View entering={FadeInDown.duration(220)} style={styles.header}>
             <View>
-              <Text style={styles.greeting}>{getGreeting()}</Text>
-              <Text style={styles.userName}>{currentUser?.displayName || 'Aquarist'} 👋</Text>
+              <Text style={[styles.greeting, { color: colors.textSecondary }]}>{getGreeting()}</Text>
+              <Text style={[styles.userName, { color: colors.text }]}>{currentUser?.displayName || 'Aquarist'} 👋</Text>
             </View>
-            <View style={styles.tankSelector}>
+            <View style={[styles.tankSelector, { backgroundColor: colors.tankBackground }]}>
               <Text style={styles.tankName}>{selectedTank?.name || 'No tank'}</Text>
             </View>
           </Animated.View>
 
           {/* Risk Meter Card */}
           {selectedTank && (
-            <GlassCard style={styles.riskCard} delay={100}>
+            <GlassCard style={[styles.riskCard, { backgroundColor: colors.card }]} delay={100}>
               <View style={styles.riskHeader}>
                 <View style={styles.riskLabelContainer}>
-                  <Text style={styles.riskLabel}>Tank Health</Text>
+                  <Text style={[styles.riskLabel, { color: colors.text }]}>Tank Health</Text>
                   <TouchableOpacity 
                     onPress={() => setShowRiskModal(true)}
                     hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                   >
-                    <Info size={16} color="#64748B" />
+                    <Info size={16} color={colors.textSecondary} />
                   </TouchableOpacity>
                 </View>
                 <Badge 
@@ -128,7 +130,7 @@ export default function HomeScreen() {
                 height={10}
               />
               
-              <Text style={styles.riskMessage}>
+              <Text style={[styles.riskMessage, { color: colors.textSecondary }]}>
                 {riskLevel === 'low' 
                   ? "Nice — your tank looks stable today."
                   : riskLevel === 'medium'
@@ -141,23 +143,23 @@ export default function HomeScreen() {
           {/* Today's Tasks */}
           <Animated.View entering={FadeInDown.delay(100).duration(220)}>
             <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>Today's Tasks</Text>
+              <Text style={[styles.sectionTitle, { color: colors.text }]}>Today's Tasks</Text>
               <TouchableOpacity onPress={() => router.push('/(tabs)/mytank')}>
                 <Text style={styles.seeAll}>See all</Text>
               </TouchableOpacity>
             </View>
 
             {todayTasks.length === 0 ? (
-              <GlassCard style={styles.emptyCard}>
+              <GlassCard style={[styles.emptyCard, { backgroundColor: colors.card }]}>
                 <View style={styles.emptyContent}>
-                  <Text style={styles.emptyTitle}>All caught up! 🎉</Text>
-                  <Text style={styles.emptyText}>No tasks due today. Your fish are happy.</Text>
+                  <Text style={[styles.emptyTitle, { color: colors.text }]}>All caught up! 🎉</Text>
+                  <Text style={[styles.emptyText, { color: colors.textSecondary }]}>No tasks due today. Your fish are happy.</Text>
                 </View>
               </GlassCard>
             ) : (
               <View style={styles.tasksList}>
                 {todayTasks.slice(0, 3).map((task, index) => (
-                  <GlassCard key={task.id} style={styles.taskCard} delay={250 + index * 50}>
+                  <GlassCard key={task.id} style={[styles.taskCard, { backgroundColor: colors.card }]} delay={250 + index * 50}>
                     <TouchableOpacity 
                       style={styles.taskContent}
                       onPress={() => handleCompleteTask(task.id)}
@@ -167,10 +169,10 @@ export default function HomeScreen() {
                         {getTaskIcon(task.type)}
                       </View>
                       <View style={styles.taskInfo}>
-                        <Text style={styles.taskTitle}>{task.title}</Text>
+                        <Text style={[styles.taskTitle, { color: colors.text }]}>{task.title}</Text>
                         <View style={styles.taskMeta}>
-                          <Clock size={12} color="#64748B" />
-                          <Text style={styles.taskTime}>
+                          <Clock size={12} color={colors.textSecondary} />
+                          <Text style={[styles.taskTime, { color: colors.textSecondary }]}>
                             {task.frequencyConfig.timeOfDay || 'Anytime'}
                           </Text>
                         </View>
@@ -187,34 +189,34 @@ export default function HomeScreen() {
 
           {/* Suggested Actions */}
           <Animated.View entering={FadeInDown.delay(180).duration(220)}>
-            <Text style={styles.sectionTitle}>Suggested Actions</Text>
+            <Text style={[styles.sectionTitle, { color: colors.text }]}>Suggested Actions</Text>
             <ScrollView 
               horizontal 
               showsHorizontalScrollIndicator={false}
               contentContainerStyle={styles.actionsScrollContent}
             >
-              <GlassCard style={styles.actionCard} onPress={() => router.push('/(tabs)/mytank')}>
+              <GlassCard style={[styles.actionCard, { backgroundColor: colors.card }]} onPress={() => router.push('/(tabs)/mytank')}>
                 <View style={[styles.actionIcon, { backgroundColor: 'rgba(78, 205, 196, 0.2)' }]}>
                   <Droplets size={24} color="#4ECDC4" />
                 </View>
-                <Text style={styles.actionTitle}>Log Water Test</Text>
-                <Text style={styles.actionSubtitle}>Track your parameters</Text>
+                <Text style={[styles.actionTitle, { color: colors.text }]}>Log Water Test</Text>
+                <Text style={[styles.actionSubtitle, { color: colors.textSecondary }]}>Track your parameters</Text>
               </GlassCard>
 
-              <GlassCard style={styles.actionCard} onPress={() => router.push('/(tabs)/catalog')}>
+              <GlassCard style={[styles.actionCard, { backgroundColor: colors.card }]} onPress={() => router.push('/(tabs)/catalog')}>
                 <View style={[styles.actionIcon, { backgroundColor: 'rgba(255, 107, 53, 0.2)' }]}>
                   <MascotIcon variant="search" size={64} />
                 </View>
-                <Text style={styles.actionTitle}>Add Fish</Text>
-                <Text style={styles.actionSubtitle}>Browse compatible species</Text>
+                <Text style={[styles.actionTitle, { color: colors.text }]}>Add Fish</Text>
+                <Text style={[styles.actionSubtitle, { color: colors.textSecondary }]}>Browse compatible species</Text>
               </GlassCard>
 
-              <GlassCard style={styles.actionCard} onPress={() => router.push('/(tabs)/community')}>
+              <GlassCard style={[styles.actionCard, { backgroundColor: colors.card }]} onPress={() => router.push('/(tabs)/community')}>
                 <View style={[styles.actionIcon, { backgroundColor: 'rgba(13, 115, 119, 0.2)' }]}>
                   <TrendingUp size={24} color="#0D7377" />
                 </View>
-                <Text style={styles.actionTitle}>Get Inspired</Text>
-                <Text style={styles.actionSubtitle}>Browse community tanks</Text>
+                <Text style={[styles.actionTitle, { color: colors.text }]}>Get Inspired</Text>
+                <Text style={[styles.actionSubtitle, { color: colors.textSecondary }]}>Browse community tanks</Text>
               </GlassCard>
             </ScrollView>
           </Animated.View>

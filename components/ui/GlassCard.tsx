@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, StyleSheet, ViewStyle, TouchableOpacity } from 'react-native';
+import { View, StyleSheet, TouchableOpacity } from 'react-native';
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -9,10 +9,12 @@ import Animated, {
   Easing,
 } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
+import { useTheme } from '@/store/ThemeContext';
+import { StyleProp, ViewStyle } from 'react-native';
 
 interface GlassCardProps {
   children: React.ReactNode;
-  style?: ViewStyle;
+  style?: StyleProp<ViewStyle>;
   onPress?: () => void;
   variant?: 'default' | 'elevated' | 'flat';
   animated?: boolean;
@@ -30,6 +32,7 @@ export default function GlassCard({
   animated = true,
   delay = 0,
 }: GlassCardProps) {
+  const { colors, activeTheme } = useTheme();
   const scale = useSharedValue(1);
   const translateY = useSharedValue(0);
 
@@ -54,8 +57,21 @@ export default function GlassCard({
 
   const cardStyles = [
     styles.card,
-    variant === 'elevated' && styles.elevated,
-    variant === 'flat' && styles.flat,
+    { backgroundColor: colors.card, borderColor: colors.border },
+    variant === 'elevated' && [
+      styles.elevated, 
+      { 
+        backgroundColor: activeTheme === 'dark' ? 'rgba(30, 30, 30, 0.95)' : 'rgba(255, 255, 255, 0.85)',
+        shadowColor: activeTheme === 'dark' ? '#000' : '#000' 
+      }
+    ],
+    variant === 'flat' && [
+      styles.flat,
+       { 
+         backgroundColor: activeTheme === 'dark' ? 'rgba(30, 30, 30, 0.4)' : 'rgba(255, 255, 255, 0.6)',
+         borderColor: colors.border
+       }
+    ],
     style,
   ];
 
