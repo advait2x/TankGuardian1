@@ -6,6 +6,8 @@ import Animated, { useAnimatedStyle, withSpring, useSharedValue } from 'react-na
 import * as Haptics from 'expo-haptics';
 import MascotIcon from '@/components/mascot/MascotIcon';
 
+import { useTheme } from '@/store/ThemeContext';
+
 const AnimatedTouchable = Animated.createAnimatedComponent(TouchableOpacity);
 
 function FAB() {
@@ -44,14 +46,19 @@ function FAB() {
 }
 
 export default function TabsLayout() {
+  const { colors, activeTheme } = useTheme();
+
   return (
     <View style={styles.container}>
       <Tabs
         screenOptions={{
           headerShown: false,
-          tabBarStyle: styles.tabBar,
-          tabBarActiveTintColor: '#0D7377',
-          tabBarInactiveTintColor: '#94A3B8',
+          tabBarStyle: [styles.tabBar, { 
+            backgroundColor: activeTheme === 'dark' ? 'rgba(30, 30, 30, 0.95)' : 'rgba(255, 255, 255, 0.95)',
+            borderTopColor: colors.border
+          }],
+          tabBarActiveTintColor: colors.primary,
+          tabBarInactiveTintColor: colors.textSecondary,
           tabBarShowLabel: true,
           tabBarLabelStyle: styles.tabBarLabel,
           tabBarLabelPosition: 'below-icon',
@@ -117,11 +124,10 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     height: 80,
-    backgroundColor: 'rgba(255, 255, 255, 0.95)',
     borderTopWidth: 1,
-    borderTopColor: 'rgba(0, 0, 0, 0.05)',
     paddingBottom: 20,
     paddingTop: 8,
+    paddingHorizontal: 16,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: -4 },
     shadowOpacity: 0.1,

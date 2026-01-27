@@ -10,6 +10,8 @@ import {
 } from 'react-native';
 import { Plus } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
+import { useUnitSettings } from '@/store/UnitSettingsContext';
+import { useTheme } from '@/store/ThemeContext';
 import type { Tank } from '@/data/types';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -32,6 +34,8 @@ export default function TankSwitcher({
   onSelectTank,
   onCreateTank,
 }: TankSwitcherProps) {
+  const { formatVolume } = useUnitSettings();
+  const { colors, activeTheme } = useTheme();
   const flatListRef = useRef<FlatList<TankItem>>(null);
   
   // Combine tanks with "Add New" button
@@ -82,12 +86,12 @@ export default function TankSwitcher({
     if ('isNewButton' in item && item.isNewButton) {
       return (
         <TouchableOpacity
-          style={styles.newTankCard}
+          style={[styles.newTankCard, { backgroundColor: colors.card, borderColor: colors.primary }]}
           onPress={handleCreateTank}
           activeOpacity={0.7}
         >
-          <Plus size={20} color="#0D7377" />
-          <Text style={styles.newTankText}>New Tank</Text>
+          <Plus size={20} color={colors.primary} />
+          <Text style={[styles.newTankText, { color: colors.primary }]}>New Tank</Text>
         </TouchableOpacity>
       );
     }
@@ -100,22 +104,25 @@ export default function TankSwitcher({
       <TouchableOpacity
         style={[
           styles.tankCard,
-          isActive && styles.tankCardActive,
+          { backgroundColor: colors.card, borderColor: 'transparent' },
+          isActive && [styles.tankCardActive, { backgroundColor: activeTheme === 'dark' ? 'rgba(13, 115, 119, 0.3)' : 'rgba(13, 115, 119, 0.15)', borderColor: colors.primary }],
         ]}
         onPress={() => handleSelectTank(tank.id)}
         activeOpacity={0.7}
       >
         <Text style={[
           styles.tankName,
-          isActive && styles.tankNameActive,
+          { color: colors.text },
+          isActive && [styles.tankNameActive, { color: colors.primary }],
         ]}>
           {tank.name}
         </Text>
         <Text style={[
           styles.tankInfo,
-          isActive && styles.tankInfoActive,
+          { color: colors.textSecondary },
+          isActive && [styles.tankInfoActive, { color: colors.primary }],
         ]}>
-          {tank.sizeGallons}gal • {tank.fishInstances.length} fish
+          {formatVolume(tank.sizeGallons)} • {tank.fishInstances.length} fish
         </Text>
       </TouchableOpacity>
     );
@@ -126,12 +133,12 @@ export default function TankSwitcher({
     return (
       <View style={styles.container}>
         <TouchableOpacity
-          style={styles.newTankCard}
+          style={[styles.newTankCard, { backgroundColor: colors.card, borderColor: colors.primary }]}
           onPress={handleCreateTank}
           activeOpacity={0.7}
         >
-          <Plus size={20} color="#0D7377" />
-          <Text style={styles.newTankText}>Create Your First Tank</Text>
+          <Plus size={20} color={colors.primary} />
+          <Text style={[styles.newTankText, { color: colors.primary }]}>Create Your First Tank</Text>
         </TouchableOpacity>
       </View>
     );

@@ -56,13 +56,14 @@ import FishThumb from '@/components/FishThumb';
 import WaterTrendsChart from '@/components/tank/WaterTrendsChart';
 import { useApp } from '@/store/AppContext';
 import { useAuth } from '@/store/AuthContext';
+import { useUnitSettings } from '@/store/UnitSettingsContext';
 import { useToast } from '@/components/ui/Toast';
 import { fishSpecies, generateId } from '@/data/mockData';
-import { getFishCatalog } from '@/utils/fishCatalogAdapter';
 import { saveWaterLog, fetchWaterLogs } from '@/utils/waterLogsAdapter';
 import { runDiseaseScan } from '@/utils/diseaseDetection';
 import { fetchDiseaseCheckHistory } from '@/utils/remoteDiseaseChecks';
 import { preloadCatalog, getSpeciesBySlugSync } from '@/utils/tankSpeciesLookup';
+import { useFishCatalog } from '@/hooks/useCatalogQueries';
 import { getLatestAquascapeLayout, AquascapeLayoutItem } from '@/utils/aquascapeRemote';
 import { mapLayoutToContainer, MappedLayoutItem, getAsset, normalizeLayout } from '@/utils/aquascapeLayout';
 import SubstrateLayer, { DEFAULT_SUBSTRATE } from '@/components/tank/SubstrateLayer';
@@ -70,6 +71,7 @@ import * as Haptics from 'expo-haptics';
 import { useMascot } from '@/components/mascot/MascotContext';
 import { FishSpecies } from '@/data/types';
 import { WaterLog } from '@/data/types';
+import { useTheme } from '@/store/ThemeContext';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const TANK_WIDTH = SCREEN_WIDTH - 48;
@@ -217,10 +219,12 @@ function Bubble({ delay }: { delay: number }) {
 }
 
 export default function MyTankScreen() {
+  const { colors, activeTheme } = useTheme();
   const router = useRouter();
   const { tanks, selectedTankId, selectTank, addWaterLog, tasks, completeTask, removeFishFromTank, addFishToTank, addFishInstances, isPremium, currentUser, diseaseCheckCount, incrementDiseaseCheck } = useApp();
   const { session } = useAuth();
   const { showToast } = useToast();
+  const { formatVolume, formatLength } = useUnitSettings();
   
   const selectedTank = tanks.find(t => t.id === selectedTankId);
   const [selectedFish, setSelectedFish] = useState<string | null>(null);
@@ -246,9 +250,14 @@ export default function MyTankScreen() {
   // Mounted ref to track component lifecycle
   const isMounted = useRef(true);
   
-  // Fish catalog state
-  const [fishCatalog, setFishCatalog] = useState<FishSpecies[]>([]);
-  const [isCatalogLoading, setIsCatalogLoading] = useState(false);
+  // Use React Query for fish catalog - passing search query ensures we search the full DB
+  const { 
+    data: fishCatalog = [], 
+    isLoading: isCatalogLoading 
+  } = useFishCatalog({ 
+    search: fishSearchQuery,  // Pass the search query to the hook
+    waterType: selectedTank?.waterType as any // Filter by water type on server side
+  });
   
   // Water history state
   const [waterHistory, setWaterHistory] = useState<WaterLog[]>([]);
@@ -256,7 +265,7 @@ export default function MyTankScreen() {
 
   // Aquascape state
   const [aquascapeItems, setAquascapeItems] = useState<MappedLayoutItem[]>([]);
-  const [tankContainerSize, setTankContainerSize] = useState({ width: TANK_WIDTH, height: TANK_HEIGHT });
+  const [tankContainerSize, setTankContainerSize] = useState({ width: 0, height: 0 }); // To track actual render size
   const [rawAquascapeLayout, setRawAquascapeLayout] = useState<AquascapeLayoutItem[]>([]);
   const [layout, setLayout] = useState<any>(null); // Store full layout for substrate config
 
@@ -322,39 +331,7 @@ export default function MyTankScreen() {
     }
   }, [tankContainerSize, rawAquascapeLayout]);
 
-  // Load fish catalog from database on mount
-  useEffect(() => {
-    let mounted = true;
-    
-    async function loadCatalog() {
-      setIsCatalogLoading(true);
-      try {
-        const catalog = await getFishCatalog({ limit: 100 });
-        if (mounted) {
-          setFishCatalog(catalog);
-        }
-      } catch (error) {
-        if (__DEV__) {
-          console.warn('[MyTank] Failed to load catalog:', error);
-        }
-        // Fallback to mock data on error
-        if (mounted) {
-          setFishCatalog(fishSpecies);
-        }
-      } finally {
-        if (mounted) {
-          setIsCatalogLoading(false);
-        }
-      }
-    }
-    
-    loadCatalog();
-    preloadCatalog(); // Preload for species lookup
-    
-    return () => {
-      mounted = false;
-    };
-  }, []);
+
 
   // ImagePicker diagnostics
   useEffect(() => {
@@ -370,46 +347,40 @@ export default function MyTankScreen() {
     };
   }, []);
 
-  // Load disease history when opening history view or toggle changes
-  useEffect(() => {
-    if (!showDiseaseHistory || !session?.user?.id) {
-      return;
-    }
-
-    let mounted = true;
+  const loadDiseaseHistory = React.useCallback(async () => {
+    if (!session?.user?.id) return;
     
-    async function loadDiseaseHistory() {
-      setIsLoadingHistory(true);
-      try {
-        const result = await fetchDiseaseCheckHistory({
-          ownerId: session.user.id,
-          tankId: selectedTankId || undefined,
-          limit: 20,
-          includeFailedScans: showFailedScans,
-        });
-        if (mounted && result.ok) {
-          setDiseaseHistory(result.checks || []);
-        }
-      } catch (error) {
-        if (__DEV__) {
-          console.warn('[MyTank] Failed to load disease history:', error);
-        }
-        if (mounted) {
-          setDiseaseHistory([]);
-        }
-      } finally {
-        if (mounted) {
-          setIsLoadingHistory(false);
-        }
+    setIsLoadingHistory(true);
+    try {
+      const result = await fetchDiseaseCheckHistory({
+        ownerId: session.user.id,
+        tankId: selectedTankId || undefined,
+        limit: 20,
+        includeFailedScans: showFailedScans,
+      });
+      if (isMounted.current && result.ok) {
+        setDiseaseHistory(result.checks || []);
+      }
+    } catch (error) {
+      if (__DEV__) {
+        console.warn('[MyTank] Failed to load disease history:', error);
+      }
+      if (isMounted.current) {
+        setDiseaseHistory([]);
+      }
+    } finally {
+      if (isMounted.current) {
+        setIsLoadingHistory(false);
       }
     }
-    
-    loadDiseaseHistory();
-    
-    return () => {
-      mounted = false;
-    };
-  }, [showDiseaseHistory, session?.user?.id, selectedTankId, showFailedScans]);
+  }, [session?.user?.id, selectedTankId, showFailedScans]);
+
+  // Load disease history when opening history view or toggle changes
+  useEffect(() => {
+    if (showDiseaseHistory) {
+      loadDiseaseHistory();
+    }
+  }, [showDiseaseHistory, loadDiseaseHistory]);
 
   // Load water history when tank changes
   useEffect(() => {
@@ -423,7 +394,7 @@ export default function MyTankScreen() {
     async function loadWaterHistory() {
       setIsLoadingWaterHistory(true);
       try {
-        const logs = await fetchWaterLogs(selectedTankId, 5); // Get 5 most recent
+        const logs = await fetchWaterLogs(selectedTankId!, 5); // Get 5 most recent
         if (mounted) {
           setWaterHistory(logs);
         }
@@ -507,7 +478,7 @@ export default function MyTankScreen() {
 
   // Tank creation handler
   const handleCreateNewTank = () => {
-    router.push('/onboarding/create-tank');
+    router.push('/onboarding/create-tank?isOnboarding=false');
   };
 
   // Calculate bioload using the lookup helper
@@ -676,34 +647,7 @@ export default function MyTankScreen() {
     return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: date.getFullYear() !== now.getFullYear() ? 'numeric' : undefined });
   };
 
-  // Load disease history
-  const loadDiseaseHistory = async () => {
-    if (!session?.user?.id) return;
-    
-    setIsLoadingHistory(true);
-    try {
-      const result = await fetchDiseaseCheckHistory({
-        ownerId: session.user.id,
-        tankId: selectedTankId || undefined,
-        limit: 20,
-        includeFailedScans: showFailedScans,
-      });
 
-      if (result.ok && result.checks) {
-        setDiseaseHistory(result.checks);
-      } else {
-        setDiseaseHistory([]);
-        if (result.error) {
-          console.error('[MyTank] Failed to load disease history:', result.error);
-        }
-      }
-    } catch (error) {
-      console.error('[MyTank] Disease history exception:', error);
-      setDiseaseHistory([]);
-    } finally {
-      setIsLoadingHistory(false);
-    }
-  };
 
   // Open history modal and load data
   const handleOpenDiseaseHistory = async () => {
@@ -1115,8 +1059,8 @@ export default function MyTankScreen() {
   }
 
   return (
-    <View style={styles.container}>
-      <AnimatedBackground variant="light" />
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
+      <AnimatedBackground variant={activeTheme === 'dark' ? 'dark' : 'light'} />
       
       <SafeAreaView style={styles.safeArea} edges={['top']}>
         <ScrollView
@@ -1136,9 +1080,9 @@ export default function MyTankScreen() {
 
           {/* Header */}
           <Animated.View entering={FadeInDown.duration(220)} style={styles.header}>
-            <Text style={styles.tankTitle}>{selectedTank.name}</Text>
+            <Text style={[styles.tankTitle, { color: colors.text }]}>{selectedTank.name}</Text>
             <Badge 
-              label={`${selectedTank.sizeGallons}gal ${selectedTank.waterType}`}
+              label={`${formatVolume(selectedTank.sizeGallons)} ${selectedTank.waterType}`}
               variant="default"
             />
           </Animated.View>
@@ -1191,13 +1135,13 @@ export default function MyTankScreen() {
                 </View>
               </View>
               
-              <Text style={styles.viewerHint}>Tap fish for details</Text>
+              <Text style={[styles.viewerHint, { color: colors.textSecondary }]}>Tap fish for details</Text>
             </GlassCard>
           </Animated.View>
 
           {/* Quick Actions */}
           <Animated.View entering={FadeInDown.delay(150).duration(220)}>
-            <Text style={styles.sectionTitle}>Quick Actions</Text>
+            <Text style={[styles.sectionTitle, { color: colors.text }]}>Quick Actions</Text>
             <ScrollView 
               horizontal 
               showsHorizontalScrollIndicator={false}
@@ -1216,7 +1160,7 @@ export default function MyTankScreen() {
                 <View style={[styles.quickActionIcon, { backgroundColor: 'rgba(255, 107, 53, 0.15)' }]}>
                   <Utensils size={22} color="#FF6B35" />
                 </View>
-                <Text style={styles.quickActionLabel}>Feed</Text>
+                <Text style={[styles.quickActionLabel, { color: colors.text }]}>Feed</Text>
               </TouchableOpacity>
 
               <TouchableOpacity 
@@ -1226,7 +1170,7 @@ export default function MyTankScreen() {
                 <View style={[styles.quickActionIcon, { backgroundColor: 'rgba(78, 205, 196, 0.15)' }]}>
                   <Droplets size={22} color="#4ECDC4" />
                 </View>
-                <Text style={styles.quickActionLabel}>Log Test</Text>
+                <Text style={[styles.quickActionLabel, { color: colors.text }]}>Log Test</Text>
               </TouchableOpacity>
 
               <TouchableOpacity 
@@ -1242,7 +1186,7 @@ export default function MyTankScreen() {
                 <View style={[styles.quickActionIcon, { backgroundColor: 'rgba(33, 150, 243, 0.15)' }]}>
                   <Droplets size={22} color="#2196F3" />
                 </View>
-                <Text style={styles.quickActionLabel}>Water Change</Text>
+                <Text style={[styles.quickActionLabel, { color: colors.text }]}>Water Change</Text>
               </TouchableOpacity>
 
               <TouchableOpacity 
@@ -1252,18 +1196,9 @@ export default function MyTankScreen() {
                 <View style={[styles.quickActionIcon, { backgroundColor: 'rgba(13, 115, 119, 0.15)' }]}>
                   <Plus size={22} color="#0D7377" />
                 </View>
-                <Text style={styles.quickActionLabel}>Add Fish</Text>
+                <Text style={[styles.quickActionLabel, { color: colors.text }]}>Add Fish</Text>
               </TouchableOpacity>
 
-              <TouchableOpacity 
-                style={styles.quickAction}
-                onPress={handleDiseaseDetectionPress}
-              >
-                <View style={[styles.quickActionIcon, { backgroundColor: 'rgba(255, 152, 0, 0.15)' }]}>
-                  <Camera size={22} color="#FF9800" />
-                </View>
-                <Text style={styles.quickActionLabel}>Disease Check</Text>
-              </TouchableOpacity>
             </ScrollView>
           </Animated.View>
 
@@ -1273,9 +1208,9 @@ export default function MyTankScreen() {
               <View style={styles.diseaseDetectionHeader}>
                 <View style={styles.diseaseDetectionTitleRow}>
                   <Camera size={24} color="#FF9800" />
-                  <Text style={styles.diseaseDetectionTitle}>Fish Health Scanner</Text>
+                  <Text style={[styles.diseaseDetectionTitle, { color: colors.text }]}>Fish Health Scanner</Text>
                 </View>
-                <Text style={styles.diseaseDetectionSubtitle}>
+                <Text style={[styles.diseaseDetectionSubtitle, { color: colors.textSecondary }]}>
                   AI-powered disease detection (Beta)
                 </Text>
               </View>
@@ -1318,12 +1253,12 @@ export default function MyTankScreen() {
 
             {isLoadingWaterHistory ? (
               <GlassCard style={styles.waterHistoryCard}>
-                <Text style={styles.waterHistoryEmpty}>Loading...</Text>
+                <Text style={[styles.waterHistoryEmpty, { color: colors.textSecondary }]}>Loading...</Text>
               </GlassCard>
             ) : waterHistory.length === 0 ? (
               <GlassCard style={styles.waterHistoryCard}>
-                <Text style={styles.waterHistoryEmpty}>No water logs yet.</Text>
-                <Text style={styles.waterHistoryEmptyHint}>
+                <Text style={[styles.waterHistoryEmpty, { color: colors.text }]}>No water logs yet.</Text>
+                <Text style={[styles.waterHistoryEmptyHint, { color: colors.textSecondary }]}>
                   Tap "Log Test" to record your first water parameters.
                 </Text>
               </GlassCard>
@@ -1350,46 +1285,46 @@ export default function MyTankScreen() {
                       <View style={styles.waterHistoryHeader}>
                         <View style={styles.waterHistoryDateRow}>
                           <Droplets size={16} color="#4ECDC4" />
-                          <Text style={styles.waterHistoryDate}>{formattedDate}</Text>
-                          <Text style={styles.waterHistoryTime}>{formattedTime}</Text>
+                          <Text style={[styles.waterHistoryDate, { color: colors.text }]}>{formattedDate}</Text>
+                          <Text style={[styles.waterHistoryTime, { color: colors.textSecondary }]}>{formattedTime}</Text>
                         </View>
                       </View>
                       
                       <View style={styles.waterHistoryParams}>
                         {log.ph > 0 && (
                           <View style={styles.waterHistoryParam}>
-                            <Text style={styles.waterHistoryParamLabel}>pH</Text>
-                            <Text style={styles.waterHistoryParamValue}>{log.ph.toFixed(1)}</Text>
+                            <Text style={[styles.waterHistoryParamLabel, { color: colors.textSecondary }]}>pH</Text>
+                            <Text style={[styles.waterHistoryParamValue, { color: colors.text }]}>{log.ph.toFixed(1)}</Text>
                           </View>
                         )}
                         {log.temp > 0 && (
                           <View style={styles.waterHistoryParam}>
-                            <Text style={styles.waterHistoryParamLabel}>Temp</Text>
-                            <Text style={styles.waterHistoryParamValue}>{log.temp.toFixed(0)}°F</Text>
+                            <Text style={[styles.waterHistoryParamLabel, { color: colors.textSecondary }]}>Temp</Text>
+                            <Text style={[styles.waterHistoryParamValue, { color: colors.text }]}>{log.temp.toFixed(0)}°F</Text>
                           </View>
                         )}
                         {log.ammonia >= 0 && (
                           <View style={styles.waterHistoryParam}>
-                            <Text style={styles.waterHistoryParamLabel}>NH₃</Text>
-                            <Text style={styles.waterHistoryParamValue}>{log.ammonia.toFixed(1)}</Text>
+                            <Text style={[styles.waterHistoryParamLabel, { color: colors.textSecondary }]}>NH₃</Text>
+                            <Text style={[styles.waterHistoryParamValue, { color: colors.text }]}>{log.ammonia.toFixed(1)}</Text>
                           </View>
                         )}
                         {log.nitrite >= 0 && (
                           <View style={styles.waterHistoryParam}>
-                            <Text style={styles.waterHistoryParamLabel}>NO₂</Text>
-                            <Text style={styles.waterHistoryParamValue}>{log.nitrite.toFixed(1)}</Text>
+                            <Text style={[styles.waterHistoryParamLabel, { color: colors.textSecondary }]}>NO₂</Text>
+                            <Text style={[styles.waterHistoryParamValue, { color: colors.text }]}>{log.nitrite.toFixed(1)}</Text>
                           </View>
                         )}
                         {log.nitrate >= 0 && (
                           <View style={styles.waterHistoryParam}>
-                            <Text style={styles.waterHistoryParamLabel}>NO₃</Text>
-                            <Text style={styles.waterHistoryParamValue}>{log.nitrate.toFixed(0)}</Text>
+                            <Text style={[styles.waterHistoryParamLabel, { color: colors.textSecondary }]}>NO₃</Text>
+                            <Text style={[styles.waterHistoryParamValue, { color: colors.text }]}>{log.nitrate.toFixed(0)}</Text>
                           </View>
                         )}
                       </View>
                       
                       {log.notes && log.notes.trim() && (
-                        <Text style={styles.waterHistoryNotes}>{log.notes}</Text>
+                        <Text style={[styles.waterHistoryNotes, { color: colors.textSecondary }]}>{log.notes}</Text>
                       )}
                     </GlassCard>
                   );
@@ -1408,14 +1343,14 @@ export default function MyTankScreen() {
           {/* Stock List */}
           <Animated.View entering={FadeInDown.delay(225).duration(220)}>
             <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>Stock List</Text>
-              <Text style={styles.stockCount}>{selectedTank.fishInstances.length} fish</Text>
+              <Text style={[styles.sectionTitle, { color: colors.text }]}>Stock List</Text>
+              <Text style={[styles.stockCount, { color: colors.textSecondary }]}>{selectedTank.fishInstances.length} fish</Text>
             </View>
 
             {/* Bioload indicator */}
             <GlassCard style={styles.bioloadCard}>
               <View style={styles.bioloadHeader}>
-                <Text style={styles.bioloadLabel}>Bioload</Text>
+                <Text style={[styles.bioloadLabel, { color: colors.textSecondary }]}>Bioload</Text>
                 <Badge 
                   label={bioloadPercent < 70 ? 'Good' : bioloadPercent < 100 ? 'Caution' : 'Overstocked'}
                   variant={bioloadPercent < 70 ? 'success' : bioloadPercent < 100 ? 'warning' : 'danger'}
@@ -1433,7 +1368,7 @@ export default function MyTankScreen() {
                   ]} 
                 />
               </View>
-              <Text style={styles.bioloadText}>
+              <Text style={[styles.bioloadText, { color: colors.text }]}>
                 {bioload.toFixed(1)}" / {maxBioload.toFixed(1)}" max
               </Text>
             </GlassCard>
@@ -1441,8 +1376,8 @@ export default function MyTankScreen() {
             {selectedTank.fishInstances.length === 0 ? (
               <GlassCard style={styles.emptyStockCard}>
                 <MascotIcon variant="search" size={72} />
-                <Text style={styles.emptyStockTitle}>No fish yet</Text>
-                <Text style={styles.emptyStockText}>Browse the catalog to add your first fish!</Text>
+                <Text style={[styles.emptyStockTitle, { color: colors.text }]}>No fish yet</Text>
+                <Text style={[styles.emptyStockText, { color: colors.textSecondary }]}>Browse the catalog to add your first fish!</Text>
                 <Button 
                   title="Browse Fish" 
                   onPress={() => router.push('/(tabs)/catalog')}
@@ -1493,10 +1428,10 @@ export default function MyTankScreen() {
                             </View>
                           )}
                           <View style={styles.fishCardInfo}>
-                            <Text style={styles.fishCardName}>
+                            <Text style={[styles.fishCardName, { color: colors.text }]}>
                               {instance.nickname || species?.commonName || 'Unknown Fish'}
                             </Text>
-                            <Text style={styles.fishCardSpecies}>{species?.scientificName || ''}</Text>
+                            <Text style={[styles.fishCardSpecies, { color: colors.textSecondary }]}>{species?.scientificName || ''}</Text>
                           </View>
                           <Badge 
                             label={species?.temperament || 'peaceful'}
@@ -1531,11 +1466,11 @@ export default function MyTankScreen() {
                           </View>
                         )}
                         <View style={styles.fishCardInfo}>
-                          <Text style={styles.fishCardName}>
+                          <Text style={[styles.fishCardName, { color: colors.text }]}>
                             {species?.commonName || 'Unknown Fish'}
-                            {count > 1 && <Text style={styles.fishCountBadge}> x{count}</Text>}
+                            {count > 1 && <Text style={[styles.fishCountBadge, { color: colors.primary }]}> x{count}</Text>}
                           </Text>
-                          <Text style={styles.fishCardSpecies}>{species?.scientificName || ''}</Text>
+                          <Text style={[styles.fishCardSpecies, { color: colors.textSecondary }]}>{species?.scientificName || ''}</Text>
                         </View>
                         <Badge 
                           label={species?.temperament || 'peaceful'}
@@ -1556,24 +1491,24 @@ export default function MyTankScreen() {
           {/* Latest Parameters */}
           {selectedTank.parametersLog.length > 0 && (
             <Animated.View entering={FadeInDown.delay(250).duration(220)}>
-              <Text style={styles.sectionTitle}>Latest Parameters</Text>
+              <Text style={[styles.sectionTitle, { color: colors.text }]}>Latest Parameters</Text>
               <GlassCard style={styles.paramsCard}>
                 <View style={styles.paramsGrid}>
                   <View style={styles.paramItem}>
-                    <Text style={styles.paramLabel}>pH</Text>
-                    <Text style={styles.paramValue}>{selectedTank.parametersLog[0].ph}</Text>
+                    <Text style={[styles.paramLabel, { color: colors.textSecondary }]}>pH</Text>
+                    <Text style={[styles.paramValue, { color: colors.text }]}>{selectedTank.parametersLog[0].ph}</Text>
                   </View>
                   <View style={styles.paramItem}>
-                    <Text style={styles.paramLabel}>Ammonia</Text>
-                    <Text style={styles.paramValue}>{selectedTank.parametersLog[0].ammonia} ppm</Text>
+                    <Text style={[styles.paramLabel, { color: colors.textSecondary }]}>Ammonia</Text>
+                    <Text style={[styles.paramValue, { color: colors.text }]}>{selectedTank.parametersLog[0].ammonia} ppm</Text>
                   </View>
                   <View style={styles.paramItem}>
-                    <Text style={styles.paramLabel}>Nitrite</Text>
-                    <Text style={styles.paramValue}>{selectedTank.parametersLog[0].nitrite} ppm</Text>
+                    <Text style={[styles.paramLabel, { color: colors.textSecondary }]}>Nitrite</Text>
+                    <Text style={[styles.paramValue, { color: colors.text }]}>{selectedTank.parametersLog[0].nitrite} ppm</Text>
                   </View>
                   <View style={styles.paramItem}>
-                    <Text style={styles.paramLabel}>Nitrate</Text>
-                    <Text style={styles.paramValue}>{selectedTank.parametersLog[0].nitrate} ppm</Text>
+                    <Text style={[styles.paramLabel, { color: colors.textSecondary }]}>Nitrate</Text>
+                    <Text style={[styles.paramValue, { color: colors.text }]}>{selectedTank.parametersLog[0].nitrate} ppm</Text>
                   </View>
                 </View>
               </GlassCard>
@@ -1589,7 +1524,7 @@ export default function MyTankScreen() {
         visible={showWaterLogModal}
         onClose={() => setShowWaterLogModal(false)}
         title="Log Water Parameters"
-        size="large"
+        size="full"
       >
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -1603,84 +1538,84 @@ export default function MyTankScreen() {
           >
             <View style={styles.waterLogForm}>
               <View style={styles.paramInputRow}>
-                <View style={styles.paramInputItem}>
-                  <Text style={styles.paramInputLabel}>pH</Text>
+                <View style={[styles.paramInputItem, { backgroundColor: colors.card }]}>
+                  <Text style={[styles.paramInputLabel, { color: colors.textSecondary }]}>pH</Text>
                   <TextInput
-                    style={styles.paramInput}
+                    style={[styles.paramInput, { color: colors.text }]}
                     value={waterParams.ph}
                     onChangeText={(t) => setWaterParams({...waterParams, ph: t})}
                     placeholder="7.0"
                     keyboardType="numeric"
-                    placeholderTextColor="#94A3B8"
+                    placeholderTextColor={colors.textSecondary}
                     returnKeyType="next"
                     blurOnSubmit={false}
                   />
                 </View>
-                <View style={styles.paramInputItem}>
-                  <Text style={styles.paramInputLabel}>Temp (°F)</Text>
+                <View style={[styles.paramInputItem, { backgroundColor: colors.card }]}>
+                  <Text style={[styles.paramInputLabel, { color: colors.textSecondary }]}>Temp (°F)</Text>
                   <TextInput
-                    style={styles.paramInput}
+                    style={[styles.paramInput, { color: colors.text }]}
                     value={waterParams.temp}
                     onChangeText={(t) => setWaterParams({...waterParams, temp: t})}
                     placeholder="78"
                     keyboardType="numeric"
-                    placeholderTextColor="#94A3B8"
+                    placeholderTextColor={colors.textSecondary}
                     returnKeyType="next"
                     blurOnSubmit={false}
                   />
                 </View>
               </View>
               <View style={styles.paramInputRow}>
-                <View style={styles.paramInputItem}>
-                  <Text style={styles.paramInputLabel}>Ammonia (ppm)</Text>
+                <View style={[styles.paramInputItem, { backgroundColor: colors.card }]}>
+                  <Text style={[styles.paramInputLabel, { color: colors.textSecondary }]}>Ammonia (ppm)</Text>
                   <TextInput
-                    style={styles.paramInput}
+                    style={[styles.paramInput, { color: colors.text }]}
                     value={waterParams.ammonia}
                     onChangeText={(t) => setWaterParams({...waterParams, ammonia: t})}
                     placeholder="0"
                     keyboardType="numeric"
-                    placeholderTextColor="#94A3B8"
+                    placeholderTextColor={colors.textSecondary}
                     returnKeyType="next"
                     blurOnSubmit={false}
                   />
                 </View>
-                <View style={styles.paramInputItem}>
-                  <Text style={styles.paramInputLabel}>Nitrite (ppm)</Text>
+                <View style={[styles.paramInputItem, { backgroundColor: colors.card }]}>
+                  <Text style={[styles.paramInputLabel, { color: colors.textSecondary }]}>Nitrite (ppm)</Text>
                   <TextInput
-                    style={styles.paramInput}
+                    style={[styles.paramInput, { color: colors.text }]}
                     value={waterParams.nitrite}
                     onChangeText={(t) => setWaterParams({...waterParams, nitrite: t})}
                     placeholder="0"
                     keyboardType="numeric"
-                    placeholderTextColor="#94A3B8"
+                    placeholderTextColor={colors.textSecondary}
                     returnKeyType="next"
                     blurOnSubmit={false}
                   />
                 </View>
               </View>
-              <View style={styles.paramInputItem}>
-                <Text style={styles.paramInputLabel}>Nitrate (ppm)</Text>
+              <View style={[styles.paramInputItem, { backgroundColor: colors.card }]}>
+                <Text style={[styles.paramInputLabel, { color: colors.textSecondary }]}>Nitrate (ppm)</Text>
                 <TextInput
-                  style={styles.paramInput}
+                  style={[styles.paramInput, { color: colors.text }]}
                   value={waterParams.nitrate}
                   onChangeText={(t) => setWaterParams({...waterParams, nitrate: t})}
                   placeholder="0"
                   keyboardType="numeric"
-                  placeholderTextColor="#94A3B8"
+                  placeholderTextColor={colors.textSecondary}
                   returnKeyType="next"
                   blurOnSubmit={false}
                 />
               </View>
-              <View style={styles.paramInputItem}>
-                <Text style={styles.paramInputLabel}>Notes</Text>
+              <View style={[styles.paramInputItem, { backgroundColor: colors.card }]}>
+                <Text style={[styles.paramInputLabel, { color: colors.textSecondary }]}>Notes</Text>
                 <TextInput
-                  style={[styles.paramInput, styles.paramInputMulti]}
+                  style={[styles.paramInput, styles.paramInputMulti, { color: colors.text }]}
                   value={waterParams.notes}
                   onChangeText={(t) => setWaterParams({...waterParams, notes: t})}
                   placeholder="Any observations..."
                   multiline
                   numberOfLines={2}
-                  placeholderTextColor="#94A3B8"
+                  placeholderTextColor={colors.textSecondary}
                   returnKeyType="done"
                   onSubmitEditing={Keyboard.dismiss}
                   blurOnSubmit={true}
@@ -1690,7 +1625,7 @@ export default function MyTankScreen() {
           </ScrollView>
           
           {/* Fixed footer with Save button */}
-          <View style={styles.waterLogFooter}>
+          <View style={[styles.waterLogFooter, { backgroundColor: colors.card, borderTopColor: colors.border }]}>
             <Button 
               title="Save Parameters" 
               onPress={handleSaveWaterLog}
@@ -1709,7 +1644,7 @@ export default function MyTankScreen() {
           setSelectedFish(null);
         }}
         title={selectedFishInstance?.nickname || selectedSpecies?.commonName || 'Fish Details'}
-        size="medium"
+        size="full"
       >
         {selectedSpecies && (
           <View style={styles.fishDetailContent}>
@@ -1726,35 +1661,36 @@ export default function MyTankScreen() {
                   <Text style={{ fontSize: 36 }}>🐠</Text>
                 </View>
               )}
+
               <View style={styles.fishDetailInfo}>
-                <Text style={styles.fishDetailName}>{selectedSpecies.commonName}</Text>
-                <Text style={styles.fishDetailScientific}>{selectedSpecies.scientificName}</Text>
+                <Text style={[styles.fishDetailName, { color: colors.text }]}>{selectedSpecies.commonName}</Text>
+                <Text style={[styles.fishDetailScientific, { color: colors.textSecondary }]}>{selectedSpecies.scientificName}</Text>
               </View>
             </View>
 
             <View style={styles.fishDetailStats}>
-              <View style={styles.fishStatItem}>
-                <Text style={styles.fishStatLabel}>Size</Text>
-                <Text style={styles.fishStatValue}>{selectedSpecies.adultSizeInches}"</Text>
+              <View style={[styles.fishStatItem, { backgroundColor: colors.background }]}>
+                <Text style={[styles.fishStatLabel, { color: colors.textSecondary }]}>Size</Text>
+                <Text style={[styles.fishStatValue, { color: colors.text }]}>{formatLength(selectedSpecies.adultSizeInches)}</Text>
               </View>
-              <View style={styles.fishStatItem}>
-                <Text style={styles.fishStatLabel}>Min Tank</Text>
-                <Text style={styles.fishStatValue}>{selectedSpecies.minTankGallons}g</Text>
+              <View style={[styles.fishStatItem, { backgroundColor: colors.background }]}>
+                <Text style={[styles.fishStatLabel, { color: colors.textSecondary }]}>Min Tank</Text>
+                <Text style={[styles.fishStatValue, { color: colors.text }]}>{formatVolume(selectedSpecies.minTankGallons)}</Text>
               </View>
-              <View style={styles.fishStatItem}>
-                <Text style={styles.fishStatLabel}>Diet</Text>
-                <Text style={styles.fishStatValue}>{selectedSpecies.diet}</Text>
+              <View style={[styles.fishStatItem, { backgroundColor: colors.background }]}>
+                <Text style={[styles.fishStatLabel, { color: colors.textSecondary }]}>Diet</Text>
+                <Text style={[styles.fishStatValue, { color: colors.text }]}>{selectedSpecies.diet}</Text>
               </View>
               {selectedSpecies.tempMin !== undefined && selectedSpecies.tempMax !== undefined && (
-                <View style={styles.fishStatItem}>
-                  <Text style={styles.fishStatLabel}>Temp</Text>
-                  <Text style={styles.fishStatValue}>{selectedSpecies.tempMin}-{selectedSpecies.tempMax}°F</Text>
+                <View style={[styles.fishStatItem, { backgroundColor: colors.background }]}>
+                  <Text style={[styles.fishStatLabel, { color: colors.textSecondary }]}>Temp</Text>
+                  <Text style={[styles.fishStatValue, { color: colors.text }]}>{selectedSpecies.tempMin}-{selectedSpecies.tempMax}°F</Text>
                 </View>
               )}
               {selectedSpecies.phMin !== undefined && selectedSpecies.phMax !== undefined && (
-                <View style={styles.fishStatItem}>
-                  <Text style={styles.fishStatLabel}>pH</Text>
-                  <Text style={styles.fishStatValue}>{selectedSpecies.phMin}-{selectedSpecies.phMax}</Text>
+                <View style={[styles.fishStatItem, { backgroundColor: colors.background }]}>
+                  <Text style={[styles.fishStatLabel, { color: colors.textSecondary }]}>pH</Text>
+                  <Text style={[styles.fishStatValue, { color: colors.text }]}>{selectedSpecies.phMin}-{selectedSpecies.phMax}</Text>
                 </View>
               )}
             </View>
@@ -1773,8 +1709,8 @@ export default function MyTankScreen() {
 
             {(selectedSpecies.careNotesShort || selectedSpecies.careNotes) && (
               <View style={styles.fishDetailNotesContainer}>
-                <Text style={styles.fishDetailNotesTitle}>Care Notes</Text>
-                <Text style={styles.fishDetailNotes}>
+                <Text style={[styles.fishDetailNotesTitle, { color: colors.primary }]}>Care Notes</Text>
+                <Text style={[styles.fishDetailNotes, { color: colors.text }]}>
                   {selectedSpecies.careNotesShort || selectedSpecies.careNotes}
                 </Text>
               </View>
@@ -1809,22 +1745,22 @@ export default function MyTankScreen() {
           setFishSearchQuery('');
         }}
         title="Add Fish to Tank"
-        size="large"
+        size="full"
       >
         <View style={styles.addFishContent}>
           {/* Search */}
-          <View style={styles.searchContainer}>
-            <Search size={20} color="#64748B" />
+          <View style={[styles.searchContainer, { backgroundColor: colors.background }]}>
+            <Search size={20} color={colors.textSecondary} />
             <TextInput
-              style={styles.searchInput}
+              style={[styles.searchInput, { color: colors.text }]}
               placeholder="Search fish..."
               value={fishSearchQuery}
               onChangeText={setFishSearchQuery}
-              placeholderTextColor="#94A3B8"
+              placeholderTextColor={colors.textSecondary}
             />
             {fishSearchQuery.length > 0 && (
               <TouchableOpacity onPress={() => setFishSearchQuery('')}>
-                <X size={18} color="#64748B" />
+                <X size={18} color={colors.textSecondary} />
               </TouchableOpacity>
             )}
           </View>
@@ -1837,13 +1773,13 @@ export default function MyTankScreen() {
             {isCatalogLoading ? (
               <View style={styles.emptyFishList}>
                 <MascotIcon variant="happy" size={64} />
-                <Text style={styles.emptyFishListText}>Loading fish catalog...</Text>
+                <Text style={[styles.emptyFishListText, { color: colors.textSecondary }]}>Loading fish catalog...</Text>
               </View>
             ) : filteredFishForAdd.length > 0 ? (
               filteredFishForAdd.map((fish) => (
                 <TouchableOpacity
                   key={fish.id}
-                  style={styles.fishListItem}
+                  style={[styles.fishListItem, { backgroundColor: colors.card, borderColor: colors.border }]}
                   onPress={() => handleSelectFishToAdd(fish)}
                   activeOpacity={0.7}
                 >
@@ -1860,27 +1796,27 @@ export default function MyTankScreen() {
                     </View>
                   )}
                   <View style={styles.fishListItemInfo}>
-                    <Text style={styles.fishListItemName}>{fish.commonName}</Text>
-                    <Text style={styles.fishListItemScientific}>{fish.scientificName}</Text>
+                    <Text style={[styles.fishListItemName, { color: colors.text }]}>{fish.commonName}</Text>
+                    <Text style={[styles.fishListItemScientific, { color: colors.textSecondary }]}>{fish.scientificName}</Text>
                     <View style={styles.fishListItemBadges}>
                       <Badge 
                         label={fish.difficulty} 
                         variant={fish.difficulty === 'easy' ? 'success' : fish.difficulty === 'medium' ? 'warning' : 'danger'}
                         size="small"
                       />
-                      <Text style={styles.fishListItemSize}>{fish.minTankGallons}g+</Text>
+                      <Text style={[styles.fishListItemSize, { color: colors.textSecondary }]}>{formatVolume(fish.minTankGallons)}+</Text>
                     </View>
                   </View>
-                  <Plus size={20} color="#0D7377" />
+                  <Plus size={20} color={colors.primary} />
                 </TouchableOpacity>
               ))
             ) : (
               <View style={styles.emptyFishList}>
                 <MascotIcon variant="search" size={64} />
-                <Text style={styles.emptyFishListText}>
+                <Text style={[styles.emptyFishListText, { color: colors.text }]}>
                   {fishSearchQuery.trim() ? 'No fish found' : 'No fish available'}
                 </Text>
-                <Text style={styles.emptyFishListSubtext}>
+                <Text style={[styles.emptyFishListSubtext, { color: colors.textSecondary }]}>
                   {fishSearchQuery.trim() ? 'Try a different search term' : 'Check your database connection'}
                 </Text>
               </View>
@@ -1912,15 +1848,15 @@ export default function MyTankScreen() {
           setIsAnalyzing(false);
         }}
         title="Disease Detection"
-        size="large"
+        size="full"
       >
         {isAnalyzing ? (
           <View style={styles.analyzingContainer}>
             <MascotIcon variant="search" size={80} />
-            <Text style={styles.analyzingText}>
+            <Text style={[styles.analyzingText, { color: colors.text }]}>
               {currentStepMessage || 'Processing...'}
             </Text>
-            <Text style={styles.analyzingSubtext}>
+            <Text style={[styles.analyzingSubtext, { color: colors.textSecondary }]}>
               {detectionStage === 'uploading' && 'Securing your image'}
               {detectionStage === 'analyzing' && 'AI is examining your fish'}
               {detectionStage === 'complete' && 'Finalizing results'}
@@ -1938,9 +1874,9 @@ export default function MyTankScreen() {
 
             {/* Disease Name & Confidence */}
             <View style={styles.diseaseHeader}>
-              <Text style={styles.diseaseName}>{diseaseAnalysisResult.likelyIssue}</Text>
+              <Text style={[styles.diseaseName, { color: colors.text }]}>{diseaseAnalysisResult.likelyIssue}</Text>
               <View style={styles.confidenceContainer}>
-                <Text style={styles.confidenceLabel}>Confidence:</Text>
+                <Text style={[styles.confidenceLabel, { color: colors.textSecondary }]}>Confidence:</Text>
                 <Text style={[
                   styles.confidenceValue,
                   { color: diseaseAnalysisResult.confidence >= 80 ? '#10B981' : diseaseAnalysisResult.confidence >= 60 ? '#FF9800' : '#EF4444' }
@@ -1961,11 +1897,11 @@ export default function MyTankScreen() {
             {/* Observations */}
             {diseaseAnalysisResult.observations && diseaseAnalysisResult.observations.length > 0 && (
               <View style={styles.diseaseSection}>
-                <Text style={styles.diseaseSectionTitle}>Observations</Text>
+                <Text style={[styles.diseaseSectionTitle, { color: colors.text }]}>Observations</Text>
                 {diseaseAnalysisResult.observations.map((observation: string, index: number) => (
-                  <View key={index} style={styles.symptomItem}>
+                  <View key={index} style={[styles.symptomItem, { backgroundColor: activeTheme === 'dark' ? 'rgba(16, 185, 129, 0.15)' : 'rgba(16, 185, 129, 0.05)' }]}>
                     <Check size={16} color="#10B981" />
-                    <Text style={styles.symptomText}>{observation}</Text>
+                    <Text style={[styles.symptomText, { color: colors.text }]}>{observation}</Text>
                   </View>
                 ))}
               </View>
@@ -1974,11 +1910,11 @@ export default function MyTankScreen() {
             {/* Advice */}
             {diseaseAnalysisResult.advice && diseaseAnalysisResult.advice.length > 0 && (
               <View style={styles.diseaseSection}>
-                <Text style={styles.diseaseSectionTitle}>Recommended Actions</Text>
+                <Text style={[styles.diseaseSectionTitle, { color: colors.text }]}>Recommended Actions</Text>
                 {diseaseAnalysisResult.advice.map((step: string, index: number) => (
-                  <View key={index} style={styles.treatmentItem}>
+                  <View key={index} style={[styles.treatmentItem, { backgroundColor: colors.card }]}>
                     <Text style={styles.treatmentNumber}>{index + 1}</Text>
-                    <Text style={styles.treatmentText}>{step}</Text>
+                    <Text style={[styles.treatmentText, { color: colors.text }]}>{step}</Text>
                   </View>
                 ))}
               </View>
@@ -1987,7 +1923,7 @@ export default function MyTankScreen() {
             {/* Disclaimer */}
             {diseaseAnalysisResult.disclaimer && (
               <View style={styles.diseaseSection}>
-                <Text style={styles.adviceText}>{diseaseAnalysisResult.disclaimer}</Text>
+                <Text style={[styles.adviceText, { color: colors.textSecondary }]}>{diseaseAnalysisResult.disclaimer}</Text>
               </View>
             )}
 
@@ -2111,7 +2047,7 @@ export default function MyTankScreen() {
                       ) : status === 'error' ? (
                         <Text style={styles.historyItemTitleError}>Error</Text>
                       ) : (
-                        <Text style={styles.historyItemTitle}>
+                        <Text style={[styles.historyItemTitle, { color: colors.text }]}>
                           {result.likelyIssue || 'No issues detected'}
                         </Text>
                       )}
@@ -2332,7 +2268,6 @@ const styles = StyleSheet.create({
   tankTitle: {
     fontSize: 24,
     fontWeight: '700',
-    color: '#1A252F',
   },
   tankViewerCard: {
     padding: 8,
@@ -2418,12 +2353,10 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 18,
     fontWeight: '700',
-    color: '#1A252F',
     marginBottom: 12,
   },
   stockCount: {
     fontSize: 14,
-    color: '#64748B',
   },
   actionsRow: {
     gap: 12,
@@ -2444,8 +2377,8 @@ const styles = StyleSheet.create({
   },
   quickActionLabel: {
     fontSize: 12,
-    color: '#2C3E50',
     fontWeight: '500',
+    textAlign: 'center',
   },
   diseaseDetectionCard: {
     marginBottom: 24,
@@ -2463,11 +2396,9 @@ const styles = StyleSheet.create({
   diseaseDetectionTitle: {
     fontSize: 18,
     fontWeight: '700',
-    color: '#1A252F',
   },
   diseaseDetectionSubtitle: {
     fontSize: 14,
-    color: '#64748B',
   },
   diseaseButtonRow: {
     flexDirection: 'row',
@@ -2498,7 +2429,6 @@ const styles = StyleSheet.create({
   },
   adviceText: {
     fontSize: 14,
-    color: '#475569',
     lineHeight: 20,
   },
   emptyHistoryContainer: {
@@ -2509,12 +2439,10 @@ const styles = StyleSheet.create({
   emptyHistoryText: {
     fontSize: 18,
     fontWeight: '600',
-    color: '#2C3E50',
     marginTop: 8,
   },
   emptyHistorySubtext: {
     fontSize: 14,
-    color: '#64748B',
     textAlign: 'center',
     maxWidth: 240,
   },
@@ -2533,7 +2461,6 @@ const styles = StyleSheet.create({
   historyToggleLabel: {
     fontSize: 15,
     fontWeight: '500',
-    color: '#1A252F',
   },
   historyToggleSwitch: {
     width: 48,
@@ -2577,12 +2504,10 @@ const styles = StyleSheet.create({
   historyItemTitle: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#1A252F',
     marginBottom: 4,
   },
   historyItemDate: {
     fontSize: 12,
-    color: '#64748B',
   },
   historyItemRow: {
     flexDirection: 'row',
@@ -2591,13 +2516,11 @@ const styles = StyleSheet.create({
   },
   historyItemLabel: {
     fontSize: 13,
-    color: '#64748B',
     marginRight: 8,
   },
   historyItemValue: {
     fontSize: 13,
     fontWeight: '600',
-    color: '#2C3E50',
   },
   historyItemError: {
     fontSize: 12,
@@ -2606,7 +2529,6 @@ const styles = StyleSheet.create({
   },
   historyItemAdvice: {
     fontSize: 13,
-    color: '#475569',
     marginTop: 8,
     lineHeight: 18,
   },
@@ -2647,7 +2569,6 @@ const styles = StyleSheet.create({
   },
   checkDateText: {
     fontSize: 14,
-    color: '#64748B',
     fontWeight: '500',
   },
   errorContainer: {
@@ -2671,15 +2592,7 @@ const styles = StyleSheet.create({
     color: '#94A3B8',
     marginTop: 8,
   },
-  diseaseDetectionDisclaimer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginTop: 12,
-    paddingTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(0, 0, 0, 0.05)',
-  },
+
   diseaseDetectionDisclaimerText: {
     flex: 1,
     fontSize: 11,
@@ -2699,7 +2612,6 @@ const styles = StyleSheet.create({
   bioloadLabel: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#2C3E50',
   },
   bioloadBar: {
     height: 8,
@@ -2713,7 +2625,6 @@ const styles = StyleSheet.create({
   },
   bioloadText: {
     fontSize: 12,
-    color: '#64748B',
     marginTop: 6,
     textAlign: 'right',
   },
@@ -2725,12 +2636,10 @@ const styles = StyleSheet.create({
   emptyStockTitle: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#2C3E50',
     marginTop: 8,
   },
   emptyStockText: {
     fontSize: 14,
-    color: '#64748B',
     textAlign: 'center',
     marginBottom: 8,
   },
@@ -2756,7 +2665,6 @@ const styles = StyleSheet.create({
   fishCardName: {
     fontSize: 15,
     fontWeight: '600',
-    color: '#1A252F',
   },
   fishCountBadge: {
     fontSize: 14,
@@ -2765,7 +2673,6 @@ const styles = StyleSheet.create({
   },
   fishCardSpecies: {
     fontSize: 12,
-    color: '#64748B',
     fontStyle: 'italic',
   },
   paramsCard: {
@@ -2781,13 +2688,11 @@ const styles = StyleSheet.create({
   },
   paramLabel: {
     fontSize: 12,
-    color: '#64748B',
     marginBottom: 2,
   },
   paramValue: {
     fontSize: 18,
     fontWeight: '700',
-    color: '#1A252F',
   },
   bottomPadding: {
     height: 20,
@@ -2802,11 +2707,9 @@ const styles = StyleSheet.create({
   emptyTitle: {
     fontSize: 20,
     fontWeight: '700',
-    color: '#1A252F',
   },
   emptyText: {
     fontSize: 15,
-    color: '#64748B',
     textAlign: 'center',
     marginBottom: 8,
   },
@@ -2820,8 +2723,8 @@ const styles = StyleSheet.create({
     paddingTop: 16,
     paddingBottom: 8,
     borderTopWidth: 1,
+
     borderTopColor: 'rgba(0, 0, 0, 0.05)',
-    backgroundColor: 'rgba(255, 255, 255, 0.95)',
   },
   paramInputRow: {
     flexDirection: 'row',
@@ -2833,7 +2736,6 @@ const styles = StyleSheet.create({
   paramInputLabel: {
     fontSize: 13,
     fontWeight: '600',
-    color: '#2C3E50',
     marginBottom: 6,
   },
   paramInput: {
@@ -2871,12 +2773,10 @@ const styles = StyleSheet.create({
   fishDetailName: {
     fontSize: 20,
     fontWeight: '700',
-    color: '#1A252F',
     marginBottom: 4,
   },
   fishDetailScientific: {
     fontSize: 14,
-    color: '#64748B',
     fontStyle: 'italic',
   },
   fishDetailStats: {
@@ -2891,12 +2791,10 @@ const styles = StyleSheet.create({
   },
   fishStatLabel: {
     fontSize: 12,
-    color: '#64748B',
   },
   fishStatValue: {
     fontSize: 16,
     fontWeight: '700',
-    color: '#1A252F',
     marginTop: 2,
     textTransform: 'capitalize',
   },
@@ -2927,6 +2825,7 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   addFishContent: {
+    flex: 1,
     gap: 16,
   },
   searchContainer: {
@@ -2943,10 +2842,9 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingVertical: 12,
     fontSize: 16,
-    color: '#2C3E50',
   },
   fishListScroll: {
-    maxHeight: 400,
+    flex: 1,
   },
   fishListItem: {
     flexDirection: 'row',
@@ -2970,12 +2868,10 @@ const styles = StyleSheet.create({
   fishListItemName: {
     fontSize: 15,
     fontWeight: '600',
-    color: '#1A252F',
     marginBottom: 2,
   },
   fishListItemScientific: {
     fontSize: 12,
-    color: '#64748B',
     fontStyle: 'italic',
     marginBottom: 6,
   },
@@ -2986,7 +2882,6 @@ const styles = StyleSheet.create({
   },
   fishListItemSize: {
     fontSize: 11,
-    color: '#64748B',
     fontWeight: '500',
   },
   emptyFishList: {
@@ -2997,12 +2892,10 @@ const styles = StyleSheet.create({
   emptyFishListText: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#2C3E50',
     marginTop: 8,
   },
   emptyFishListSubtext: {
     fontSize: 14,
-    color: '#64748B',
   },
   analyzingContainer: {
     alignItems: 'center',
@@ -3012,11 +2905,9 @@ const styles = StyleSheet.create({
   analyzingText: {
     fontSize: 18,
     fontWeight: '600',
-    color: '#1A252F',
   },
   analyzingSubtext: {
     fontSize: 14,
-    color: '#64748B',
   },
   diseaseResultContent: {
     flex: 1,
@@ -3044,7 +2935,6 @@ const styles = StyleSheet.create({
   diseaseName: {
     fontSize: 22,
     fontWeight: '700',
-    color: '#1A252F',
     marginBottom: 12,
   },
   confidenceContainer: {
@@ -3054,7 +2944,6 @@ const styles = StyleSheet.create({
   },
   confidenceLabel: {
     fontSize: 14,
-    color: '#64748B',
   },
   confidenceValue: {
     fontSize: 18,
@@ -3067,7 +2956,6 @@ const styles = StyleSheet.create({
   diseaseSectionTitle: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#1A252F',
     marginBottom: 12,
   },
   symptomItem: {
@@ -3083,7 +2971,6 @@ const styles = StyleSheet.create({
   symptomText: {
     flex: 1,
     fontSize: 14,
-    color: '#2C3E50',
   },
   treatmentItem: {
     flexDirection: 'row',
@@ -3235,36 +3122,5 @@ const styles = StyleSheet.create({
     color: '#0D7377',
     flex: 1,
   },
-  checkDateContainer: {
-    marginBottom: 16,
-    paddingBottom: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(0, 0, 0, 0.05)',
-  },
-  checkDateText: {
-    fontSize: 14,
-    color: '#64748B',
-    fontWeight: '500',
-  },
-  errorContainer: {
-    alignItems: 'center',
-    paddingVertical: 40,
-    gap: 16,
-  },
-  errorTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: '#EF4444',
-  },
-  errorMessage: {
-    fontSize: 14,
-    color: '#64748B',
-    textAlign: 'center',
-    lineHeight: 20,
-  },
-  errorDate: {
-    fontSize: 13,
-    color: '#94A3B8',
-    marginTop: 8,
-  },
+
 });

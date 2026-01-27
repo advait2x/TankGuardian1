@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Dimensions, ActivityIndicator, useWindowDimensions } from 'react-native';
 import Svg, { Line, Circle, Text as SvgText, Polyline } from 'react-native-svg';
 import { listWaterLogs, RemoteWaterLog } from '@/utils/remoteWaterLogs';
+import { useTheme } from '@/store/ThemeContext';
 
 const CHART_HEIGHT = 200;
 const PADDING = { top: 20, right: 10, bottom: 30, left: 35 }; // Reduced left padding
@@ -44,6 +45,7 @@ export default function WaterTrendsChart({ tankId }: WaterTrendsChartProps) {
   const [logs, setLogs] = useState<RemoteWaterLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [containerWidth, setContainerWidth] = useState(0);
+  const { colors, activeTheme } = useTheme();
 
   // Use window dimensions for responsive sizing
   const { width: windowWidth } = useWindowDimensions();
@@ -171,7 +173,7 @@ export default function WaterTrendsChart({ tankId }: WaterTrendsChartProps) {
 
   return (
     <View 
-      style={styles.container}
+      style={[styles.container, { backgroundColor: colors.card }]}
       onLayout={(event) => {
         const { width } = event.nativeEvent.layout;
         setContainerWidth(width - 32); // Subtract internal padding
@@ -179,15 +181,15 @@ export default function WaterTrendsChart({ tankId }: WaterTrendsChartProps) {
     >
       {/* Metric Selector */}
       <View style={styles.selectorRow}>
-        <Text style={styles.label}>Metric:</Text>
-        <View style={styles.segmentedControl}>
+        <Text style={[styles.label, { color: colors.textSecondary }]}>Metric:</Text>
+        <View style={[styles.segmentedControl, { backgroundColor: activeTheme === 'dark' ? 'rgba(0,0,0,0.2)' : '#F3F4F6' }]}>
           {(Object.keys(metricLabels) as Metric[]).map((m) => (
             <TouchableOpacity
               key={m}
-              style={[styles.segment, metric === m && styles.segmentActive]}
+              style={[styles.segment, metric === m && [styles.segmentActive, { backgroundColor: colors.background }]]}
               onPress={() => setMetric(m)}
             >
-              <Text style={[styles.segmentText, metric === m && styles.segmentTextActive]}>
+              <Text style={[styles.segmentText, { color: colors.textSecondary }, metric === m && [styles.segmentTextActive, { color: colors.text }]]}>
                 {metricLabels[m].split(' ')[0]}
               </Text>
             </TouchableOpacity>
@@ -197,15 +199,15 @@ export default function WaterTrendsChart({ tankId }: WaterTrendsChartProps) {
 
       {/* Range Selector */}
       <View style={styles.selectorRow}>
-        <Text style={styles.label}>Range:</Text>
-        <View style={styles.segmentedControl}>
+        <Text style={[styles.label, { color: colors.textSecondary }]}>Range:</Text>
+        <View style={[styles.segmentedControl, { backgroundColor: activeTheme === 'dark' ? 'rgba(0,0,0,0.2)' : '#F3F4F6' }]}>
           {(['7d', '30d', '90d', 'all'] as Range[]).map((r) => (
             <TouchableOpacity
               key={r}
-              style={[styles.segment, range === r && styles.segmentActive]}
+              style={[styles.segment, range === r && [styles.segmentActive, { backgroundColor: colors.background }]]}
               onPress={() => setRange(r)}
             >
-              <Text style={[styles.segmentText, range === r && styles.segmentTextActive]}>
+              <Text style={[styles.segmentText, { color: colors.textSecondary }, range === r && [styles.segmentTextActive, { color: colors.text }]]}>
                 {r === 'all' ? 'All' : r}
               </Text>
             </TouchableOpacity>
@@ -218,17 +220,17 @@ export default function WaterTrendsChart({ tankId }: WaterTrendsChartProps) {
         {loading ? (
           <View style={styles.loadingContainer}>
             <ActivityIndicator size="large" color={metricColors[metric]} />
-            <Text style={styles.loadingText}>Loading data...</Text>
+            <Text style={[styles.loadingText, { color: colors.textSecondary }]}>Loading data...</Text>
           </View>
         ) : dataPoints.length === 0 ? (
           <View style={styles.emptyContainer}>
-            <Text style={styles.emptyText}>No data available for this period</Text>
-            <Text style={styles.emptySubtext}>Log water parameters to see trends</Text>
+            <Text style={[styles.emptyText, { color: colors.text }]}>No data available for this period</Text>
+            <Text style={[styles.emptySubtext, { color: colors.textSecondary }]}>Log water parameters to see trends</Text>
           </View>
         ) : dataPoints.length === 1 ? (
           <View style={styles.emptyContainer}>
-            <Text style={styles.emptyText}>Not enough data yet</Text>
-            <Text style={styles.emptySubtext}>Add more logs to see trend lines</Text>
+            <Text style={[styles.emptyText, { color: colors.text }]}>Not enough data yet</Text>
+            <Text style={[styles.emptySubtext, { color: colors.textSecondary }]}>Add more logs to see trend lines</Text>
           </View>
         ) : chartWidth > 0 ? (
           <View style={{ overflow: 'hidden' }}>
@@ -241,7 +243,7 @@ export default function WaterTrendsChart({ tankId }: WaterTrendsChartProps) {
                     y1={tick.y}
                     x2={chartWidth - PADDING.right}
                     y2={tick.y}
-                    stroke="#E5E7EB"
+                    stroke={activeTheme === 'dark' ? 'rgba(255,255,255,0.1)' : '#E5E7EB'}
                     strokeWidth="1"
                     strokeDasharray="4,4"
                   />
@@ -249,7 +251,7 @@ export default function WaterTrendsChart({ tankId }: WaterTrendsChartProps) {
                     x={PADDING.left - 5}
                     y={tick.y + 3}
                     fontSize="9"
-                    fill="#6B7280"
+                    fill={colors.textSecondary}
                     textAnchor="end"
                   >
                     {tick.value.toFixed(1)}
@@ -283,7 +285,7 @@ export default function WaterTrendsChart({ tankId }: WaterTrendsChartProps) {
                     x={xScale(dataPoints[0].date)}
                     y={CHART_HEIGHT - 5}
                     fontSize="9"
-                    fill="#6B7280"
+                    fill={colors.textSecondary}
                     textAnchor="start"
                   >
                     {formatDate(dataPoints[0].date)}
@@ -293,7 +295,7 @@ export default function WaterTrendsChart({ tankId }: WaterTrendsChartProps) {
                       x={xScale(dataPoints[Math.floor(dataPoints.length / 2)].date)}
                       y={CHART_HEIGHT - 5}
                       fontSize="9"
-                      fill="#6B7280"
+                      fill={colors.textSecondary}
                       textAnchor="middle"
                     >
                       {formatDate(dataPoints[Math.floor(dataPoints.length / 2)].date)}
@@ -303,7 +305,7 @@ export default function WaterTrendsChart({ tankId }: WaterTrendsChartProps) {
                     x={xScale(dataPoints[dataPoints.length - 1].date)}
                     y={CHART_HEIGHT - 5}
                     fontSize="9"
-                    fill="#6B7280"
+                    fill={colors.textSecondary}
                     textAnchor="end"
                   >
                     {formatDate(dataPoints[dataPoints.length - 1].date)}
@@ -319,7 +321,7 @@ export default function WaterTrendsChart({ tankId }: WaterTrendsChartProps) {
       {!loading && dataPoints.length > 1 && (
         <View style={styles.legend}>
           <View style={[styles.legendDot, { backgroundColor: metricColors[metric] }]} />
-          <Text style={styles.legendText}>
+          <Text style={[styles.legendText, { color: colors.textSecondary }]}>
             {metricLabels[metric]} • {dataPoints.length} data points
           </Text>
         </View>

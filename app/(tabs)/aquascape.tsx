@@ -42,11 +42,13 @@ import HardscapeSelectionSheet from '@/components/sheets/HardscapeSelectionSheet
 import FishThumb from '@/components/FishThumb';
 import { FloraItem } from '@/utils/floraCatalogAdapter';
 import { HardscapeItem } from '@/utils/hardscapeCatalogAdapter';
-import { getPublicImageUrl } from '@/utils/storageUrls';
+
 import * as Haptics from 'expo-haptics';
+import { useTheme } from '@/store/ThemeContext';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
-const CANVAS_WIDTH = SCREEN_WIDTH - 48;
+// Calculate width accounting for ScrollView padding (20*2) and Card padding (16*2)
+const CANVAS_WIDTH = SCREEN_WIDTH - 72;
 const CANVAS_HEIGHT = 400;
 const GRID_SIZE = 8;
 
@@ -93,6 +95,7 @@ function DraggableItem({
   canvasWidth: number;
   canvasHeight: number;
 }) {
+  const { colors } = useTheme();
   // Initialize with sanitized values
   const translateX = useSharedValue(num(item.x, 0));
   const translateY = useSharedValue(num(item.y, 0));
@@ -197,7 +200,8 @@ function DraggableItem({
         <View
           style={[
             styles.draggableItem,
-            isSelected && styles.draggableItemSelected,
+            { backgroundColor: colors.card, borderColor: colors.border },
+            isSelected && [styles.draggableItemSelected, { borderColor: colors.primary }],
           ]}
         >
           {hasCatalogImage ? (
@@ -207,7 +211,7 @@ function DraggableItem({
               style={{ borderRadius: 8 }}
             />
           ) : (
-            <Text style={styles.itemEmoji}>{asset.emoji}</Text>
+            <Text style={[styles.itemEmoji, { color: colors.text }]}>{asset.emoji}</Text>
           )}
           {isSelected && (
             <TouchableOpacity
@@ -224,6 +228,7 @@ function DraggableItem({
 }
 
 export default function AquascapeScreen() {
+  const { colors, activeTheme } = useTheme();
   const { tanks, selectedTankId, selectTank } = useApp();
   const { session } = useAuth();
   const { showToast } = useToast();
@@ -520,12 +525,12 @@ export default function AquascapeScreen() {
 
   if (!selectedTank) {
     return (
-      <View style={styles.container}>
-        <AnimatedBackground />
+      <View style={[styles.container, { backgroundColor: colors.background }]}>
+        <AnimatedBackground variant={activeTheme === 'dark' ? 'dark' : 'light'} />
         <SafeAreaView style={styles.safeArea}>
           <View style={styles.emptyStateContainer}>
-            <Text style={styles.emptyStateTitle}>No Tank Selected</Text>
-            <Text style={styles.emptyStateText}>
+            <Text style={[styles.emptyStateTitle, { color: colors.text }]}>No Tank Selected</Text>
+            <Text style={[styles.emptyStateText, { color: colors.textSecondary }]}>
               Create a tank first to design your aquascape
             </Text>
           </View>
@@ -535,8 +540,8 @@ export default function AquascapeScreen() {
   }
 
   return (
-    <GestureHandlerRootView style={styles.container}>
-      <AnimatedBackground variant="light" />
+    <GestureHandlerRootView style={[styles.container, { backgroundColor: colors.background }]}>
+      <AnimatedBackground variant={activeTheme === 'dark' ? 'dark' : 'light'} />
       <SafeAreaView style={styles.safeArea}>
         <ScrollView
           style={styles.scrollView}
@@ -547,14 +552,14 @@ export default function AquascapeScreen() {
           <Animated.View entering={FadeInDown.duration(300)}>
             <View style={styles.header}>
               <View>
-                <Text style={styles.title}>Aquascape Designer</Text>
-                <Text style={styles.subtitle}>
+                <Text style={[styles.title, { color: colors.text }]}>Aquascape Designer</Text>
+                <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
                   Design your dream aquarium layout
                 </Text>
               </View>
               {isSaving && (
-                <View style={styles.savingIndicator}>
-                  <Text style={styles.savingText}>Saving...</Text>
+                <View style={[styles.savingIndicator, { backgroundColor: 'rgba(78, 205, 196, 0.2)' }]}>
+                  <Text style={[styles.savingText, { color: colors.primary }]}>Saving...</Text>
                 </View>
               )}
             </View>
@@ -576,9 +581,9 @@ export default function AquascapeScreen() {
           <Animated.View entering={FadeInDown.delay(100).duration(300)}>
             <GlassCard style={styles.canvasCard}>
               <View style={styles.canvasHeader}>
-                <Text style={styles.canvasTitle}>Aquascape Editor</Text>
+                <Text style={[styles.canvasTitle, { color: colors.text }]}>Aquascape Editor</Text>
                 <View style={styles.snapToggle}>
-                  <Text style={styles.snapLabel}>Snap</Text>
+                  <Text style={[styles.snapLabel, { color: colors.textSecondary }]}>Snap</Text>
                   <Switch
                     value={snapToGrid}
                     onValueChange={setSnapToGrid}
@@ -590,7 +595,7 @@ export default function AquascapeScreen() {
 
               {/* Substrate Selection */}
               <View style={styles.substrateSelector}>
-                <Text style={styles.substrateSelectorLabel}>Substrate:</Text>
+                <Text style={[styles.substrateSelectorLabel, { color: colors.text }]}>Substrate:</Text>
                 <ScrollView
                   horizontal={true}
                   showsHorizontalScrollIndicator={false}
@@ -607,14 +612,16 @@ export default function AquascapeScreen() {
                       key={type}
                       style={[
                         styles.substrateButton,
-                        layout.canvas.substrate?.type === type && styles.substrateButtonActive,
+                        { backgroundColor: colors.card, borderColor: colors.border },
+                        layout.canvas.substrate?.type === type && { borderColor: colors.primary, backgroundColor: activeTheme === 'dark' ? 'rgba(13, 115, 119, 0.3)' : 'rgba(13, 115, 119, 0.1)' },
                       ]}
                       onPress={() => handleSubstrateChange(type)}
                     >
                       <Text 
                         style={[
                           styles.substrateButtonText,
-                          layout.canvas.substrate?.type === type && styles.substrateButtonTextActive,
+                          { color: colors.textSecondary },
+                          layout.canvas.substrate?.type === type && { color: colors.primary },
                         ]}
                         numberOfLines={1}
                       >
@@ -628,8 +635,8 @@ export default function AquascapeScreen() {
               {/* Snap to Substrate Toggle */}
               <View style={styles.placeOnSubstrateRow}>
                 <View style={styles.placeOnSubstrateTextContainer}>
-                  <Text style={styles.placeOnSubstrateLabel}>Snap to substrate</Text>
-                  <Text style={styles.placeOnSubstrateHelper}>Items will rest naturally on the substrate</Text>
+                  <Text style={[styles.placeOnSubstrateLabel, { color: colors.text }]}>Snap to substrate</Text>
+                  <Text style={[styles.placeOnSubstrateHelper, { color: colors.textSecondary }]}>Items will rest naturally on the substrate</Text>
                 </View>
                 <Switch
                   value={placeOnSubstrate}
@@ -642,11 +649,11 @@ export default function AquascapeScreen() {
               <View style={styles.canvasContainer}>
                 {isLoading ? (
                   <View style={styles.loadingContainer}>
-                    <Text style={styles.loadingText}>Loading...</Text>
+                    <Text style={[styles.loadingText, { color: colors.textSecondary }]}>Loading...</Text>
                   </View>
                 ) : (
                   <View 
-                    style={styles.canvas}
+                    style={[styles.canvas, { backgroundColor: activeTheme === 'dark' ? 'rgba(78, 205, 196, 0.05)' : 'rgba(78, 205, 196, 0.08)', borderColor: colors.border }]}
                     onLayout={(e) => {
                       const { width, height } = e.nativeEvent.layout;
                       if (width > 0 && height > 0 && (width !== canvasSize.width || height !== canvasSize.height)) {
@@ -700,7 +707,7 @@ export default function AquascapeScreen() {
                     {/* Empty state */}
                     {layout.items.length === 0 && (
                       <View style={styles.canvasEmptyState}>
-                        <Text style={styles.canvasEmptyText}>
+                        <Text style={[styles.canvasEmptyText, { color: colors.textSecondary }]}>
                           Tap buttons below to add items
                         </Text>
                       </View>
@@ -709,11 +716,11 @@ export default function AquascapeScreen() {
                 )}
               </View>
 
-              <View style={styles.canvasFooter}>
-                <Text style={styles.lastSavedText}>
+              <View style={[styles.canvasFooter, { borderTopColor: colors.border }]}>
+                <Text style={[styles.lastSavedText, { color: colors.textSecondary }]}>
                   Last saved: {formatLastSaved()}
                 </Text>
-                <Text style={styles.itemCountText}>
+                <Text style={[styles.itemCountText, { color: colors.primary }]}>
                   {layout.items.length} items
                 </Text>
               </View>
@@ -723,22 +730,22 @@ export default function AquascapeScreen() {
           {/* Palette */}
           <Animated.View entering={FadeInDown.delay(150).duration(300)}>
             <GlassCard style={styles.paletteCard}>
-              <Text style={styles.paletteTitle}>Add Items</Text>
+              <Text style={[styles.paletteTitle, { color: colors.text }]}>Add Items</Text>
               <View style={styles.paletteButtons}>
                 <TouchableOpacity
-                  style={styles.paletteButton}
+                  style={[styles.paletteButton, { backgroundColor: colors.card, borderColor: colors.border }]}
                   onPress={() => setShowFloraSheet(true)}
                 >
                   <Text style={styles.paletteEmoji}>🌿</Text>
-                  <Text style={styles.paletteLabel}>Plants/Coral</Text>
+                  <Text style={[styles.paletteLabel, { color: colors.text }]}>Plants/Coral</Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity
-                  style={styles.paletteButton}
+                  style={[styles.paletteButton, { backgroundColor: colors.card, borderColor: colors.border }]}
                   onPress={() => setShowHardscapeSheet(true)}
                 >
                   <Text style={styles.paletteEmoji}>🪨</Text>
-                  <Text style={styles.paletteLabel}>Decorations</Text>
+                  <Text style={[styles.paletteLabel, { color: colors.text }]}>Decorations</Text>
                 </TouchableOpacity>
               </View>
             </GlassCard>
@@ -766,7 +773,7 @@ export default function AquascapeScreen() {
           {!session?.user?.id && (
             <Animated.View entering={FadeInDown.delay(250).duration(300)}>
               <GlassCard style={styles.noticeCard}>
-                <Text style={styles.noticeText}>
+                <Text style={[styles.noticeText, { color: colors.textSecondary }]}>
                   💡 Log in to save your designs
                 </Text>
               </GlassCard>
@@ -780,7 +787,6 @@ export default function AquascapeScreen() {
         visible={showFloraSheet}
         onClose={() => setShowFloraSheet(false)}
         onSelect={handleFloraSelect}
-        selectedTank={selectedTank || null}
       />
 
       {/* Hardscape Selection Sheet */}
@@ -788,7 +794,6 @@ export default function AquascapeScreen() {
         visible={showHardscapeSheet}
         onClose={() => setShowHardscapeSheet(false)}
         onSelect={handleHardscapeSelect}
-        selectedTank={selectedTank || null}
       />
     </GestureHandlerRootView>
   );

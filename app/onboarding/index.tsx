@@ -8,12 +8,14 @@ import Button from '@/components/ui/Button';
 import MascotIcon from '@/components/mascot/MascotIcon';
 import { useApp } from '@/store/AppContext';
 import { useMascot } from '@/components/mascot/MascotContext';
+import { useTheme } from '@/store/ThemeContext';
 import { useEffect } from 'react';
 
 export default function OnboardingWelcomeScreen() {
   const router = useRouter();
   const { currentUser } = useApp();
   const { showMascot, hideMascot } = useMascot();
+  const { colors, activeTheme } = useTheme();
 
   useEffect(() => {
     // Show guide mascot on onboarding welcome
@@ -24,8 +26,8 @@ export default function OnboardingWelcomeScreen() {
   }, []);
 
   return (
-    <View style={styles.container}>
-      <AnimatedBackground />
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
+      <AnimatedBackground variant={activeTheme === 'dark' ? 'dark' : 'light'} />
       
       <SafeAreaView style={styles.safeArea}>
         <View style={styles.content}>
@@ -50,14 +52,14 @@ export default function OnboardingWelcomeScreen() {
           
           <Animated.Text 
             entering={FadeInDown.delay(240).duration(240)}
-            style={styles.title}
+            style={[styles.title, { color: colors.text }]}
           >
             Welcome to{'\n'}TankGuardian
           </Animated.Text>
           
           <Animated.Text 
             entering={FadeInDown.delay(300).duration(240)}
-            style={styles.subtitle}
+            style={[styles.subtitle, { color: colors.textSecondary }]}
           >
             I'll be your personal aquarium assistant. Let me help you set up your tank and keep your fish healthy and happy!
           </Animated.Text>
@@ -65,19 +67,19 @@ export default function OnboardingWelcomeScreen() {
           {/* Features Preview */}
           <Animated.View 
             entering={FadeInDown.delay(360).duration(240)}
-            style={styles.featuresPreview}
+            style={[styles.featuresPreview, { backgroundColor: colors.card }]}
           >
             <View style={styles.featureItem}>
               <Text style={styles.featureEmoji}>🐠</Text>
-              <Text style={styles.featureText}>Build your tank profile</Text>
+              <Text style={[styles.featureText, { color: colors.text }]}>Build your tank profile</Text>
             </View>
             <View style={styles.featureItem}>
               <Text style={styles.featureEmoji}>⏰</Text>
-              <Text style={styles.featureText}>Get smart reminders</Text>
+              <Text style={[styles.featureText, { color: colors.text }]}>Get smart reminders</Text>
             </View>
             <View style={styles.featureItem}>
               <Text style={styles.featureEmoji}>🩺</Text>
-              <Text style={styles.featureText}>Diagnose fish health</Text>
+              <Text style={[styles.featureText, { color: colors.text }]}>Diagnose fish health</Text>
             </View>
           </Animated.View>
 

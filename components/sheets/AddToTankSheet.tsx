@@ -9,6 +9,7 @@ import { FishSpecies, Tank } from '@/data/types';
 import { fishSpecies as allFishSpecies } from '@/data/mockData';
 import { getSpeciesBySlugSync } from '@/utils/tankSpeciesLookup';
 import * as Haptics from 'expo-haptics';
+import { useTheme } from '@/store/ThemeContext';
 
 interface AddToTankSheetProps {
   visible: boolean;
@@ -32,6 +33,8 @@ export default function AddToTankSheet({
   const [compatibilityLevel, setCompatibilityLevel] = useState<CompatibilityLevel>('compatible');
   const [warnings, setWarnings] = useState<string[]>([]);
   const [showTankPicker, setShowTankPicker] = useState(false);
+  const [isWaterTypeMismatch, setIsWaterTypeMismatch] = useState(false);
+  const { colors, activeTheme } = useTheme();
 
   const selectedTank = tanks?.find(t => t.id === selectedTankId);
 
@@ -60,6 +63,7 @@ export default function AddToTankSheet({
       const checkResults = checkCompatibility(species, selectedTank, quantity);
       setWarnings(checkResults.warnings);
       setCompatibilityLevel(checkResults.level);
+      setIsWaterTypeMismatch(checkResults.isWaterTypeMismatch);
     }
   }, [species, selectedTank, quantity]);
 
@@ -67,18 +71,20 @@ export default function AddToTankSheet({
     targetSpecies: FishSpecies,
     targetTank: Tank,
     qty: number
-  ): { warnings: string[]; level: CompatibilityLevel } => {
+  ): { warnings: string[]; level: CompatibilityLevel; isWaterTypeMismatch: boolean } => {
     const warnings: string[] = [];
     let level: CompatibilityLevel = 'compatible';
+    let isWaterTypeMismatch = false;
 
     // Check water type compatibility (CRITICAL - prevent mismatched water types)
     if (targetSpecies.waterType !== targetTank.waterType) {
       warnings.push(
-        `Water type mismatch: ${targetSpecies.commonName} is a ${targetSpecies.waterType} fish and cannot be added to a ${targetTank.waterType} tank`
+        `${targetSpecies.commonName} is a ${targetSpecies.waterType} fish and cannot be added to a ${targetTank.waterType} tank`
       );
       level = 'not-recommended';
+      isWaterTypeMismatch = true;
       // Return early - this is a hard blocker
-      return { warnings, level };
+      return { warnings, level, isWaterTypeMismatch };
     }
 
     // Check tank size
@@ -132,7 +138,7 @@ export default function AddToTankSheet({
       if (level !== 'not-recommended') level = 'caution';
     }
 
-    return { warnings, level };
+    return { warnings, level, isWaterTypeMismatch };
   };
 
   const handleConfirm = async () => {
@@ -173,7 +179,7 @@ export default function AddToTankSheet({
       case 'not-recommended':
         return {
           icon: <AlertTriangle size={20} color="#E57373" />,
-          text: 'Not Recommended',
+          text: isWaterTypeMismatch ? 'Water Type Mismatch' : 'Not Recommended',
           bgColor: 'rgba(229, 115, 115, 0.1)',
           borderColor: 'rgba(229, 115, 115, 0.3)',
           textColor: '#C62828',
@@ -201,24 +207,24 @@ export default function AddToTankSheet({
             </View>
           )}
           <View style={styles.speciesInfo}>
-            <Text style={styles.speciesName}>{species.commonName}</Text>
-            <Text style={styles.speciesScientific}>{species.scientificName}</Text>
+            <Text style={[styles.speciesName, { color: colors.text }]}>{species.commonName}</Text>
+            <Text style={[styles.speciesScientific, { color: colors.textSecondary }]}>{species.scientificName}</Text>
           </View>
         </View>
 
         {/* Tank Selector */}
         {tanks && tanks.length > 1 ? (
           <View>
-            <Text style={styles.sectionLabel}>Select Tank</Text>
+            <Text style={[styles.sectionLabel, { color: colors.text }]}>Select Tank</Text>
             <TouchableOpacity
-              style={styles.tankSelector}
+              style={[styles.tankSelector, { backgroundColor: colors.card, borderColor: colors.border }]}
               onPress={() => setShowTankPicker(!showTankPicker)}
             >
               <View style={styles.tankSelectorContent}>
-                <Text style={styles.tankSelectorText}>
+                <Text style={[styles.tankSelectorText, { color: colors.text }]}>
                   {selectedTank?.name || 'Select a tank'}
                 </Text>
-                <Text style={styles.tankSelectorSubtext}>
+                <Text style={[styles.tankSelectorSubtext, { color: colors.textSecondary }]}>
                   {selectedTank ? `${selectedTank.sizeGallons}g ${selectedTank.waterType}` : ''}
                 </Text>
               </View>
@@ -226,7 +232,7 @@ export default function AddToTankSheet({
             </TouchableOpacity>
 
             {showTankPicker && (
-              <View style={styles.tankPicker}>
+              <View style={[styles.tankPicker, { backgroundColor: colors.card, borderColor: colors.border }]}>
                 <ScrollView style={styles.tankPickerScroll}>
                   {tanks.map((tank) => (
                     <TouchableOpacity
@@ -234,12 +240,13 @@ export default function AddToTankSheet({
                       style={[
                         styles.tankOption,
                         selectedTankId === tank.id && styles.tankOptionSelected,
+                        { borderBottomColor: colors.border }
                       ]}
                       onPress={() => handleSelectTank(tank.id)}
                     >
                       <View>
-                        <Text style={styles.tankOptionName}>{tank.name}</Text>
-                        <Text style={styles.tankOptionDetails}>
+                        <Text style={[styles.tankOptionName, { color: colors.text }]}>{tank.name}</Text>
+                        <Text style={[styles.tankOptionDetails, { color: colors.textSecondary }]}>
                           {tank.sizeGallons}g • {tank.waterType} • {tank.fishInstances?.length || 0} fish
                         </Text>
                       </View>
@@ -253,10 +260,10 @@ export default function AddToTankSheet({
             )}
           </View>
         ) : (
-          <View style={styles.singleTankInfo}>
-            <Text style={styles.singleTankLabel}>Tank</Text>
-            <Text style={styles.singleTankName}>{selectedTank?.name}</Text>
-            <Text style={styles.singleTankDetails}>
+          <View style={[styles.singleTankInfo, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <Text style={[styles.singleTankLabel, { color: colors.textSecondary }]}>Tank</Text>
+            <Text style={[styles.singleTankName, { color: colors.text }]}>{selectedTank?.name}</Text>
+            <Text style={[styles.singleTankDetails, { color: colors.textSecondary }]}>
               {selectedTank?.sizeGallons}g • {selectedTank?.waterType}
             </Text>
           </View>
@@ -282,11 +289,11 @@ export default function AddToTankSheet({
 
             {/* Warnings */}
             {warnings.length > 0 && (
-              <View style={styles.warningsContainer}>
+              <View style={[styles.warningsContainer, { backgroundColor: activeTheme === 'dark' ? 'rgba(255, 167, 38, 0.15)' : 'rgba(255, 167, 38, 0.05)' }]}>
                 {warnings.map((warning, index) => (
                   <View key={index} style={styles.warningItem}>
-                    <Text style={styles.warningBullet}>•</Text>
-                    <Text style={styles.warningText}>{warning}</Text>
+                    <Text style={[styles.warningBullet, { color: colors.textSecondary }]}>•</Text>
+                    <Text style={[styles.warningText, { color: colors.text }]}>{warning}</Text>
                   </View>
                 ))}
               </View>
@@ -294,7 +301,7 @@ export default function AddToTankSheet({
 
             {/* Quantity Selector */}
             <View style={styles.quantitySection}>
-              <Text style={styles.quantityLabel}>Quantity</Text>
+              <Text style={[styles.quantityLabel, { color: colors.text }]}>Quantity</Text>
               <QuantityStepper value={quantity} onChange={setQuantity} min={1} max={12} />
             </View>
 
@@ -305,7 +312,7 @@ export default function AddToTankSheet({
                 onPress={handleConfirm}
                 variant="primary"
                 fullWidth
-                disabled={compatibilityLevel === 'not-recommended' && warnings.some(w => w.includes('Water type mismatch'))}
+                disabled={isWaterTypeMismatch}
               />
               <Button title="Cancel" onPress={handleCancel} variant="outline" fullWidth />
             </View>
@@ -338,12 +345,10 @@ const styles = StyleSheet.create({
   speciesName: {
     fontSize: 18,
     fontWeight: '700',
-    color: '#1A252F',
     marginBottom: 2,
   },
   speciesScientific: {
     fontSize: 14,
-    color: '#64748B',
     fontStyle: 'italic',
   },
   compatibilityBanner: {
@@ -360,7 +365,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   warningsContainer: {
-    backgroundColor: 'rgba(255, 167, 38, 0.05)',
     borderRadius: 12,
     padding: 14,
     gap: 8,
@@ -371,13 +375,11 @@ const styles = StyleSheet.create({
   },
   warningBullet: {
     fontSize: 14,
-    color: '#64748B',
     fontWeight: '600',
   },
   warningText: {
     flex: 1,
     fontSize: 13,
-    color: '#2C3E50',
     lineHeight: 18,
   },
   quantitySection: {
@@ -388,7 +390,6 @@ const styles = StyleSheet.create({
   quantityLabel: {
     fontSize: 15,
     fontWeight: '600',
-    color: '#2C3E50',
   },
   actions: {
     gap: 10,
@@ -397,16 +398,13 @@ const styles = StyleSheet.create({
   sectionLabel: {
     fontSize: 15,
     fontWeight: '600',
-    color: '#2C3E50',
     marginBottom: 8,
   },
   tankSelector: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: 'rgba(78, 205, 196, 0.05)',
     borderWidth: 1,
-    borderColor: 'rgba(78, 205, 196, 0.2)',
     borderRadius: 12,
     padding: 14,
   },
@@ -416,19 +414,15 @@ const styles = StyleSheet.create({
   tankSelectorText: {
     fontSize: 15,
     fontWeight: '600',
-    color: '#1A252F',
     marginBottom: 2,
   },
   tankSelectorSubtext: {
     fontSize: 13,
-    color: '#64748B',
   },
   tankPicker: {
     marginTop: 8,
-    backgroundColor: '#FFFFFF',
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#E2E8F0',
     maxHeight: 200,
   },
   tankPickerScroll: {
@@ -440,7 +434,6 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     padding: 14,
     borderBottomWidth: 1,
-    borderBottomColor: '#E2E8F0',
   },
   tankOptionSelected: {
     backgroundColor: 'rgba(78, 205, 196, 0.05)',
@@ -448,35 +441,27 @@ const styles = StyleSheet.create({
   tankOptionName: {
     fontSize: 15,
     fontWeight: '600',
-    color: '#1A252F',
     marginBottom: 2,
   },
   tankOptionDetails: {
     fontSize: 13,
-    color: '#64748B',
   },
   singleTankInfo: {
-    backgroundColor: 'rgba(78, 205, 196, 0.05)',
     borderWidth: 1,
-    borderColor: 'rgba(78, 205, 196, 0.2)',
     borderRadius: 12,
     padding: 14,
   },
   singleTankLabel: {
     fontSize: 13,
     fontWeight: '600',
-    color: '#64748B',
     marginBottom: 4,
   },
   singleTankName: {
     fontSize: 15,
     fontWeight: '600',
-    color: '#1A252F',
     marginBottom: 2,
   },
   singleTankDetails: {
     fontSize: 13,
-    color: '#64748B',
   },
 });
-

@@ -8,6 +8,7 @@ import AnimatedBackground from '@/components/ui/AnimatedBackground';
 import Button from '@/components/ui/Button';
 import GlassCard from '@/components/ui/GlassCard';
 import { useApp } from '@/store/AppContext';
+import { useTheme } from '@/store/ThemeContext';
 import * as Haptics from 'expo-haptics';
 
 const goals = [
@@ -22,6 +23,7 @@ const goals = [
 export default function GoalsScreen() {
   const router = useRouter();
   const { updateUser } = useApp();
+  const { colors, activeTheme } = useTheme();
   const [selectedGoals, setSelectedGoals] = useState<string[]>([]);
 
   const toggleGoal = async (goalId: string) => {
@@ -39,17 +41,17 @@ export default function GoalsScreen() {
   };
 
   return (
-    <View style={styles.container}>
-      <AnimatedBackground variant="light" />
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
+      <AnimatedBackground variant={activeTheme === 'dark' ? 'dark' : 'light'} />
       
       <SafeAreaView style={styles.safeArea}>
         {/* Header */}
         <Animated.View entering={FadeInDown.duration(300)} style={styles.header}>
           <TouchableOpacity 
             onPress={() => router.back()} 
-            style={styles.backButton}
+            style={[styles.backButton, { backgroundColor: colors.card }]}
           >
-            <ArrowLeft size={24} color="#2C3E50" />
+            <ArrowLeft size={24} color={colors.text} />
           </TouchableOpacity>
           <View style={styles.progressBar}>
             <View style={[styles.progressFill, { width: '33%' }]} />
@@ -64,13 +66,13 @@ export default function GoalsScreen() {
           {/* Title */}
           <Animated.Text 
             entering={FadeInDown.delay(100).duration(220)}
-            style={styles.title}
+            style={[styles.title, { color: colors.text }]}
           >
             What are your goals?
           </Animated.Text>
           <Animated.Text 
             entering={FadeInDown.delay(200).duration(220)}
-            style={styles.subtitle}
+            style={[styles.subtitle, { color: colors.textSecondary }]}
           >
             Select all that apply. We'll personalize your experience based on your interests.
           </Animated.Text>
@@ -92,7 +94,8 @@ export default function GoalsScreen() {
                     activeOpacity={0.8}
                     style={[
                       styles.goalCard,
-                      isSelected && styles.goalCardSelected,
+                      { backgroundColor: colors.card, borderColor: colors.border },
+                      isSelected && [styles.goalCardSelected, { backgroundColor: activeTheme === 'dark' ? 'rgba(13, 115, 119, 0.3)' : 'rgba(13, 115, 119, 0.08)', borderColor: colors.primary }],
                     ]}
                   >
                     {isSelected && (
@@ -105,7 +108,8 @@ export default function GoalsScreen() {
                     </View>
                     <Text style={[
                       styles.goalLabel,
-                      isSelected && styles.goalLabelSelected,
+                      { color: colors.text },
+                      isSelected && [styles.goalLabelSelected, { color: colors.primary }],
                     ]}>
                       {goal.label}
                     </Text>

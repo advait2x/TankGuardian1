@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useCallback } from 'react';
 import { View, Text, StyleSheet, Modal as RNModal, TouchableOpacity, Dimensions, Pressable, ScrollView, Platform, KeyboardAvoidingView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, {
@@ -7,21 +7,20 @@ import Animated, {
   withSpring,
   withTiming,
   runOnJS,
-  Easing,
 } from 'react-native-reanimated';
+import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
 import { X } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
+import { useTheme } from '@/store/ThemeContext';
 
-const { height } = Dimensions.get('window');
+const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
-// Calm modal animation config
-const SPRING_CONFIG = {
-  damping: 30,
+// Smooth spring for snapping
+const SNAP_SPRING = {
+  damping: 50,
   stiffness: 400,
   overshootClamping: true,
 };
-
-const EASE_IN_OUT = Easing.bezier(0.4, 0, 0.2, 1);
 
 interface ModalProps {
   visible: boolean;
@@ -30,7 +29,8 @@ interface ModalProps {
   children: React.ReactNode;
   showCloseButton?: boolean;
   size?: 'small' | 'medium' | 'large' | 'full';
-  scrollable?: boolean; // If false, children must handle their own scrolling (e.g., FlatList)
+  scrollable?: boolean;
+  enableDrag?: boolean;
 }
 
 export default function Modal({
@@ -41,39 +41,113 @@ export default function Modal({
   showCloseButton = true,
   size = 'medium',
   scrollable = true,
+  enableDrag = true,
 }: ModalProps) {
+  const { colors, activeTheme } = useTheme();
   const insets = useSafeAreaInsets();
-  const translateY = useSharedValue(height);
+  
+  // modalHeight represents the height of the modal
+  const modalHeight = useSharedValue(0);
   const backdropOpacity = useSharedValue(0);
-  const modalOpacity = useSharedValue(1); // Start visible when modal is shown
+  const dragStartHeight = useSharedValue(0);
+
+  // Define snap points as heights
+  const HALF_HEIGHT = SCREEN_HEIGHT * 0.5;
+  const FULL_HEIGHT = SCREEN_HEIGHT - insets.top - 20;
+  const MIN_HEIGHT = 100;
+
+  const triggerHaptic = useCallback(() => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  }, []);
+
+  const closeModal = useCallback(() => {
+    onClose();
+  }, [onClose]);
 
   useEffect(() => {
     if (visible) {
-      // Reset position and show
-      translateY.value = 8; // Start with subtle offset
+      // Start from 0 height, animate to half screen
+      modalHeight.value = 0;
       backdropOpacity.value = 0;
-      modalOpacity.value = 0;
       
-      // Animate in with calm, premium feel
       requestAnimationFrame(() => {
-        backdropOpacity.value = withTiming(1, { duration: 220, easing: EASE_IN_OUT });
-        modalOpacity.value = withTiming(1, { duration: 220, easing: EASE_IN_OUT });
-        translateY.value = withSpring(0, SPRING_CONFIG);
+        backdropOpacity.value = withTiming(0.5, { duration: 250 });
+        modalHeight.value = withTiming(HALF_HEIGHT, { duration: 300 });
       });
     } else {
       backdropOpacity.value = withTiming(0, { duration: 200 });
-      modalOpacity.value = withTiming(0, { duration: 200 });
-      translateY.value = withTiming(8, { duration: 220, easing: EASE_IN_OUT });
+      modalHeight.value = withTiming(0, { duration: 250 });
     }
-  }, [visible]);
+  }, [visible, HALF_HEIGHT]);
+
+  // Pan gesture - TRUE 1:1 finger tracking
+  const panGesture = Gesture.Pan()
+    .onStart(() => {
+      dragStartHeight.value = modalHeight.value;
+    })
+    .onUpdate((event) => {
+      // Dragging DOWN (positive translationY) = DECREASE height
+      // Dragging UP (negative translationY) = INCREASE height
+      const newHeight = dragStartHeight.value - event.translationY;
+      // Clamp between min and full height
+      modalHeight.value = Math.max(MIN_HEIGHT, Math.min(FULL_HEIGHT, newHeight));
+      
+      // Backdrop fades based on height
+      const progress = modalHeight.value / FULL_HEIGHT;
+      backdropOpacity.value = Math.max(0.3, Math.min(0.6, progress * 0.6));
+    })
+    .onEnd((event) => {
+      const currentHeight = modalHeight.value;
+      const velocity = event.velocityY;
+      
+      // Fast swipe down = dismiss
+      if (velocity > 800) {
+        runOnJS(triggerHaptic)();
+        backdropOpacity.value = withTiming(0, { duration: 150 });
+        modalHeight.value = withTiming(0, { duration: 200 }, () => {
+          runOnJS(closeModal)();
+        });
+        return;
+      }
+      
+      // Fast swipe up = full screen
+      if (velocity < -800) {
+        runOnJS(triggerHaptic)();
+        modalHeight.value = withSpring(FULL_HEIGHT, SNAP_SPRING);
+        backdropOpacity.value = withTiming(0.6, { duration: 150 });
+        return;
+      }
+      
+      // Snap based on height
+      const DISMISS_HEIGHT = SCREEN_HEIGHT * 0.25;
+      const MID_POINT = (HALF_HEIGHT + FULL_HEIGHT) / 2;
+      
+      if (currentHeight < DISMISS_HEIGHT) {
+        // Dismiss
+        runOnJS(triggerHaptic)();
+        backdropOpacity.value = withTiming(0, { duration: 150 });
+        modalHeight.value = withTiming(0, { duration: 200 }, () => {
+          runOnJS(closeModal)();
+        });
+      } else if (currentHeight < MID_POINT) {
+        // Snap to half
+        runOnJS(triggerHaptic)();
+        modalHeight.value = withSpring(HALF_HEIGHT, SNAP_SPRING);
+        backdropOpacity.value = withTiming(0.5, { duration: 150 });
+      } else {
+        // Snap to full
+        runOnJS(triggerHaptic)();
+        modalHeight.value = withSpring(FULL_HEIGHT, SNAP_SPRING);
+        backdropOpacity.value = withTiming(0.6, { duration: 150 });
+      }
+    });
 
   const backdropStyle = useAnimatedStyle(() => ({
     opacity: backdropOpacity.value,
   }));
 
   const modalStyle = useAnimatedStyle(() => ({
-    transform: [{ translateY: translateY.value }],
-    opacity: modalOpacity.value,
+    height: modalHeight.value,
   }));
 
   const handleClose = async () => {
@@ -81,26 +155,6 @@ export default function Modal({
     onClose();
   };
 
-  const sizeStyles = {
-    small: { 
-      maxHeight: height * 0.4,
-      minHeight: Math.min(300, height * 0.3),
-    },
-    medium: { 
-      maxHeight: height * 0.6,
-      minHeight: Math.min(400, height * 0.4),
-    },
-    large: { 
-      maxHeight: height * 0.8,
-      minHeight: Math.min(500, height * 0.5),
-    },
-    full: { 
-      maxHeight: height * 0.9,
-      minHeight: height * 0.7,
-    },
-  };
-
-  // Calculate content padding with safe area
   const contentPaddingBottom = insets.bottom + 16;
 
   return (
@@ -112,8 +166,8 @@ export default function Modal({
       onRequestClose={onClose}
       presentationStyle="overFullScreen"
     >
-      <View style={styles.container}>
-        {/* Backdrop - owned by modal */}
+      <GestureHandlerRootView style={styles.container}>
+        {/* Backdrop */}
         <Pressable 
           style={StyleSheet.absoluteFill} 
           onPress={handleClose}
@@ -121,55 +175,67 @@ export default function Modal({
           <Animated.View style={[styles.backdrop, backdropStyle]} />
         </Pressable>
         
-        {/* Modal Content - must be above backdrop */}
-        <Animated.View 
-          style={[styles.modal, sizeStyles[size], modalStyle]}
-        >
-          <KeyboardAvoidingView
-            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-            style={styles.keyboardView}
-            keyboardVerticalOffset={0}
-          >
-          {/* Handle bar */}
-          <View style={styles.handleContainer}>
-            <View style={styles.handle} />
-          </View>
-          
-          {/* Header */}
-          {(title || showCloseButton) && (
-            <View style={styles.header}>
-              {title && <Text style={styles.title}>{title}</Text>}
-              {showCloseButton && (
-                <TouchableOpacity onPress={handleClose} style={styles.closeButton}>
-                  <X size={24} color="#64748B" />
-                </TouchableOpacity>
-              )}
-            </View>
-          )}
-          
-            {/* Content - Conditionally scrollable */}
-          {scrollable ? (
-            <ScrollView
-              style={styles.scrollView}
-              contentContainerStyle={[
-                styles.content,
-                { paddingBottom: contentPaddingBottom }
-              ]}
-              showsVerticalScrollIndicator={false}
-              bounces={true}
-              nestedScrollEnabled={true}
-              keyboardShouldPersistTaps="handled"
+        {/* Modal Content */}
+        <Animated.View style={[
+          styles.modal, 
+          modalStyle, 
+          { backgroundColor: activeTheme === 'dark' ? '#1E1E1E' : '#FFFFFF' }
+        ]}>
+          <View style={styles.modalInner}>
+            <KeyboardAvoidingView
+              behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+              style={styles.keyboardView}
+              keyboardVerticalOffset={0}
             >
-              {children}
-            </ScrollView>
-          ) : (
-            <View style={[styles.scrollView, { paddingBottom: contentPaddingBottom }]}>
-              {children}
-            </View>
-          )}
-          </KeyboardAvoidingView>
+              {/* Draggable Handle */}
+              {enableDrag ? (
+                <GestureDetector gesture={panGesture}>
+                  <Animated.View style={styles.handleContainer}>
+                    <View style={[styles.handle, { backgroundColor: colors.border }]} />
+                  </Animated.View>
+                </GestureDetector>
+              ) : (
+                <View style={styles.handleContainer}>
+                  <View style={[styles.handle, { backgroundColor: colors.border }]} />
+                </View>
+              )}
+              
+              {/* Header */}
+              {(title || showCloseButton) && (
+                <View style={[styles.header, { borderBottomColor: colors.border }]}>
+                  {title && <Text style={[styles.title, { color: colors.text }]}>{title}</Text>}
+                  {showCloseButton && (
+                    <TouchableOpacity onPress={handleClose} style={styles.closeButton}>
+                      <X size={24} color={colors.textSecondary} />
+                    </TouchableOpacity>
+                  )}
+                </View>
+              )}
+              
+              {/* Content */}
+              {scrollable ? (
+                <ScrollView
+                  style={styles.scrollView}
+                  contentContainerStyle={[
+                    styles.content,
+                    { paddingBottom: contentPaddingBottom }
+                  ]}
+                  showsVerticalScrollIndicator={false}
+                  bounces={true}
+                  nestedScrollEnabled={true}
+                  keyboardShouldPersistTaps="handled"
+                >
+                  {children}
+                </ScrollView>
+              ) : (
+                <View style={[styles.scrollView, { paddingBottom: contentPaddingBottom }]}>
+                  {children}
+                </View>
+              )}
+            </KeyboardAvoidingView>
+          </View>
         </Animated.View>
-      </View>
+      </GestureHandlerRootView>
     </RNModal>
   );
 }
@@ -178,12 +244,10 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     justifyContent: 'flex-end',
-    zIndex: 1000,
   },
   backdrop: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0, 0, 0, 0.4)',
-    zIndex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
   },
   modal: {
     backgroundColor: '#fff',
@@ -195,13 +259,11 @@ const styles = StyleSheet.create({
     shadowRadius: 20,
     elevation: 20,
     overflow: 'hidden',
-    maxHeight: '90%',
-    zIndex: 2,
-    width: '100%',
-    opacity: 1, // Explicitly set opacity
+  },
+  modalInner: {
+    flex: 1,
   },
   keyboardView: {
-    width: '100%',
     flex: 1,
   },
   handleContainer: {
@@ -211,9 +273,9 @@ const styles = StyleSheet.create({
   },
   handle: {
     width: 40,
-    height: 4,
+    height: 5,
     backgroundColor: '#D4D4D8',
-    borderRadius: 2,
+    borderRadius: 3,
   },
   header: {
     flexDirection: 'row',
@@ -234,8 +296,7 @@ const styles = StyleSheet.create({
     padding: 4,
   },
   scrollView: {
-    flexGrow: 1,
-    flexShrink: 1,
+    flex: 1,
   },
   content: {
     paddingHorizontal: 20,

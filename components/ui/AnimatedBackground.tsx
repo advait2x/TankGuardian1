@@ -101,7 +101,7 @@ export default function AnimatedBackground({
   const backgroundColors = {
     default: ['#E8F4F8', '#D4EBF0', '#C5E4E9'],
     light: ['#F0F9FB', '#E8F4F8', '#E0F0F4'],
-    dark: ['#0D7377', '#095B5E', '#074547'],
+    dark: ['#121212', '#1A1A1A', '#222222'],
   };
 
   const colors = backgroundColors[variant];
