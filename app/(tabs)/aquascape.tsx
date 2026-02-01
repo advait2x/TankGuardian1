@@ -571,9 +571,6 @@ export default function AquascapeScreen() {
               tanks={tanks}
               selectedTankId={selectedTankId}
               onSelectTank={selectTank}
-              onCreateTank={() => {
-                showToast('Create tank from Home tab', 'info');
-              }}
             />
           </Animated.View>
 

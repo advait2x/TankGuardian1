@@ -251,6 +251,7 @@ export async function runDiseaseScan({
 
     const accessToken = sessionData.session.access_token;
 
+    // Invoke edge function - don't throw on error since we poll for results anyway
     try {
       const { data, error } = await supabase.functions.invoke('disease-scan', {
         body: { diseaseCheckId: id },
@@ -259,29 +260,49 @@ export async function runDiseaseScan({
       
       console.log('[runDiseaseScan] invoke returned', { data, error });
       
-      if (error) throw error;
+      // If edge function returned a 5xx server error, it likely failed completely
+      // and won't update the database, so we should fail fast
+      if (error && error.message && (error.message.includes('500') || error.message.includes('5'))) {
+        const msg = 'Edge function server error - analysis failed';
+        
+        await supabase
+          .from('disease_checks')
+          .update({
+            status: 'failed',
+            error_message: msg,
+            completed_at: new Date().toISOString(),
+            result: { status: 'error', error: msg, updatedAt: new Date().toISOString() },
+          })
+          .eq('id', id);
+
+        onStep?.('Analysis failed');
+        throw new Error(msg);
+      }
       
-      // Check if the response indicates an error
-      if (data && !data.ok && data.error) {
+      // Log errors but don't throw for other status codes - we'll poll for results
+      if (error) {
+        console.log('[runDiseaseScan] Edge function returned error (will poll for result):', error.message);
+      }
+      
+      // Only throw if the response explicitly indicates a fatal error
+      if (data && data.ok === false && data.error && data.fatal === true) {
         throw new Error(data.error);
       }
     } catch (e: any) {
-      console.error('[runDiseaseScan] Edge function error:', e);
+      console.error('[runDiseaseScan] Edge function exception:', e);
       
-      const msg = e?.message ?? 'Edge function failed';
-
-      await supabase
-        .from('disease_checks')
-        .update({
-          status: 'failed',
-          error_message: msg,
-          completed_at: new Date().toISOString(),
-          result: { status: 'error', error: msg, updatedAt: new Date().toISOString() },
-        })
-        .eq('id', id);
-
-      onStep?.('Analysis failed');
-      throw new Error(`Disease scan failed: ${msg}`);
+      // Check if this is just a status code issue (which we can ignore since we poll)
+      const errorMsg = e?.message ?? '';
+      const isStatusCodeError = errorMsg.includes('status code') || 
+                                errorMsg.includes('204') || 
+                                errorMsg.includes('No Content');
+      
+      if (isStatusCodeError) {
+        console.log('[runDiseaseScan] Status code error detected, continuing to poll for result');
+      } else {
+        // Real error - rethrow it
+        throw e;
+      }
     }
 
     // Step 4: Poll for result (1s intervals, 30s timeout)
@@ -314,6 +335,33 @@ export async function runDiseaseScan({
           return {
             id,
             result: latestCheck.result,
+          };
+        }
+
+        // If status is still "processing" after 5 polls (5 seconds) and edge function had an error,
+        // it likely means the edge function failed and won't update the database
+        if (pollCount >= 5 && status === 'processing') {
+          console.warn('[runDiseaseScan] Still processing after 5 polls, assuming edge function failed');
+          onStep?.('Analysis failed');
+          
+          const msg = 'Unable to analyze image. Please try again with a different photo.';
+          await supabase
+            .from('disease_checks')
+            .update({
+              status: 'failed',
+              error_message: msg,
+              completed_at: new Date().toISOString(),
+              result: { status: 'error', error: msg, updatedAt: new Date().toISOString() },
+            })
+            .eq('id', id);
+          
+          return {
+            id,
+            result: {
+              status: 'error',
+              error: msg,
+              updatedAt: new Date().toISOString(),
+            },
           };
         }
 

@@ -157,9 +157,9 @@ export async function fetchDiseaseCheckHistory({
       .order('created_at', { ascending: false })
       .limit(limit);
 
-    // Only show completed scans by default, optionally include failed
+    // Filter by status: show only failed if toggle is on, otherwise only completed
     if (includeFailedScans) {
-      query = query.in('status', ['completed', 'failed']);
+      query = query.eq('status', 'failed');
     } else {
       query = query.eq('status', 'completed');
     }

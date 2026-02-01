@@ -39,7 +39,8 @@ import {
   Thermometer,
   X,
   Search,
-  Camera
+  Camera,
+  Edit2
 } from 'lucide-react-native';
 import MascotIcon from '@/components/mascot/MascotIcon';
 import * as ImagePicker from 'expo-image-picker';
@@ -221,7 +222,7 @@ function Bubble({ delay }: { delay: number }) {
 export default function MyTankScreen() {
   const { colors, activeTheme } = useTheme();
   const router = useRouter();
-  const { tanks, selectedTankId, selectTank, addWaterLog, tasks, completeTask, removeFishFromTank, addFishToTank, addFishInstances, isPremium, currentUser, diseaseCheckCount, incrementDiseaseCheck } = useApp();
+  const { tanks, selectedTankId, selectTank, addWaterLog, tasks, completeTask, removeFishFromTank, addFishToTank, addFishInstances, isPremium, currentUser, diseaseCheckCount, incrementDiseaseCheck, updateTank } = useApp();
   const { session } = useAuth();
   const { showToast } = useToast();
   const { formatVolume, formatLength } = useUnitSettings();
@@ -238,6 +239,8 @@ export default function MyTankScreen() {
   const [diseaseAnalysisResult, setDiseaseAnalysisResult] = useState<any>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [detectionStage, setDetectionStage] = useState<'uploading' | 'analyzing' | 'complete' | 'error'>('uploading');
+  const [showEditTankModal, setShowEditTankModal] = useState(false);
+  const [editTankName, setEditTankName] = useState('');
   const [currentStepMessage, setCurrentStepMessage] = useState<string>('');
   const [showPhotoPickerSheet, setShowPhotoPickerSheet] = useState(false);
   const [showDiseaseHistory, setShowDiseaseHistory] = useState(false);
@@ -347,6 +350,11 @@ export default function MyTankScreen() {
     };
   }, []);
 
+  // Preload the species catalog on mount
+  useEffect(() => {
+    preloadCatalog();
+  }, []);
+
   const loadDiseaseHistory = React.useCallback(async () => {
     if (!session?.user?.id) return;
     
@@ -358,20 +366,16 @@ export default function MyTankScreen() {
         limit: 20,
         includeFailedScans: showFailedScans,
       });
-      if (isMounted.current && result.ok) {
+      if (result.ok) {
         setDiseaseHistory(result.checks || []);
       }
     } catch (error) {
       if (__DEV__) {
         console.warn('[MyTank] Failed to load disease history:', error);
       }
-      if (isMounted.current) {
-        setDiseaseHistory([]);
-      }
+      setDiseaseHistory([]);
     } finally {
-      if (isMounted.current) {
-        setIsLoadingHistory(false);
-      }
+      setIsLoadingHistory(false);
     }
   }, [session?.user?.id, selectedTankId, showFailedScans]);
 
@@ -656,6 +660,30 @@ export default function MyTankScreen() {
     loadDiseaseHistory();
   };
 
+  // Edit tank name
+  const handleEditTankName = () => {
+    if (!selectedTank) return;
+    setEditTankName(selectedTank.name);
+    setShowEditTankModal(true);
+  };
+
+  const handleSaveTankName = async () => {
+    if (!selectedTank || !editTankName.trim()) {
+      showToast('Please enter a tank name', 'error');
+      return;
+    }
+
+    try {
+      await updateTank(selectedTank.id, { name: editTankName.trim() });
+      showToast('Tank name updated!', 'success');
+      setShowEditTankModal(false);
+      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch (error) {
+      console.error('[MyTank] Error updating tank name:', error);
+      showToast('Failed to update tank name', 'error');
+    }
+  };
+
   // View a specific disease check in detail
   const handleViewHistoryCheck = async (check: any) => {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -730,11 +758,6 @@ export default function MyTankScreen() {
       const res = await ImagePicker.launchImageLibraryAsync(launchOptions);
       console.log('[PickerDiag] library returned', res);
       console.log('[DiseaseScanUI] library result', res);
-
-      if (!isMounted.current) {
-        console.log('[DiseaseScanUI] component unmounted, aborting');
-        return;
-      }
 
       if (res.canceled) return;
 
@@ -858,11 +881,6 @@ export default function MyTankScreen() {
       });
       console.log('[PickerDiag] camera returned', res);
       console.log('[DiseaseScanUI] camera result', res);
-
-      if (!isMounted.current) {
-        console.log('[DiseaseScanUI] component unmounted, aborting');
-        return;
-      }
 
       if (res.canceled) return;
 
@@ -1080,7 +1098,12 @@ export default function MyTankScreen() {
 
           {/* Header */}
           <Animated.View entering={FadeInDown.duration(220)} style={styles.header}>
-            <Text style={[styles.tankTitle, { color: colors.text }]}>{selectedTank.name}</Text>
+            <View style={styles.headerLeft}>
+              <Text style={[styles.tankTitle, { color: colors.text }]}>{selectedTank.name}</Text>
+              <TouchableOpacity onPress={handleEditTankName} style={styles.editButton}>
+                <Edit2 size={18} color={colors.primary} />
+              </TouchableOpacity>
+            </View>
             <Badge 
               label={`${formatVolume(selectedTank.sizeGallons)} ${selectedTank.waterType}`}
               variant="default"
@@ -1634,6 +1657,41 @@ export default function MyTankScreen() {
             />
           </View>
         </KeyboardAvoidingView>
+      </Modal>
+
+      {/* Edit Tank Name Modal */}
+      <Modal
+        visible={showEditTankModal}
+        onClose={() => setShowEditTankModal(false)}
+        title="Edit Tank Name"
+        size="small"
+      >
+        <View style={styles.editTankForm}>
+          <Input
+            label="Tank Name"
+            placeholder="Enter tank name"
+            value={editTankName}
+            onChangeText={setEditTankName}
+            autoFocus
+          />
+          
+          <View style={styles.editTankActions}>
+            <Button
+              title="Cancel"
+              onPress={() => setShowEditTankModal(false)}
+              variant="outline"
+              size="medium"
+              style={{ flex: 1 }}
+            />
+            <Button
+              title="Save"
+              onPress={handleSaveTankName}
+              variant="primary"
+              size="medium"
+              style={{ flex: 1 }}
+            />
+          </View>
+        </View>
       </Modal>
 
       {/* Fish Detail Modal */}
@@ -3121,6 +3179,25 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#0D7377',
     flex: 1,
+  },
+  // Edit Tank Styles
+  headerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  editButton: {
+    padding: 4,
+    marginLeft: 4,
+  },
+  editTankForm: {
+    gap: 20,
+    padding: 4,
+  },
+  editTankActions: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 8,
   },
 
 });

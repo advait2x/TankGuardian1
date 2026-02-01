@@ -31,6 +31,14 @@ const metricLabels: Record<Metric, string> = {
   nitrate_ppm: 'Nitrate (ppm)',
 };
 
+const metricShortLabels: Record<Metric, string> = {
+  ph: 'pH',
+  temperature: 'Temp',
+  ammonia_ppm: 'Ammonia',
+  nitrite_ppm: 'Nitrite',
+  nitrate_ppm: 'Nitrate',
+};
+
 const metricColors: Record<Metric, string> = {
   ph: '#3B82F6',
   temperature: '#EF4444',
@@ -189,8 +197,13 @@ export default function WaterTrendsChart({ tankId }: WaterTrendsChartProps) {
               style={[styles.segment, metric === m && [styles.segmentActive, { backgroundColor: colors.background }]]}
               onPress={() => setMetric(m)}
             >
-              <Text style={[styles.segmentText, { color: colors.textSecondary }, metric === m && [styles.segmentTextActive, { color: colors.text }]]}>
-                {metricLabels[m].split(' ')[0]}
+              <Text 
+                style={[styles.segmentText, { color: colors.textSecondary }, metric === m && [styles.segmentTextActive, { color: colors.text }]]}
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.7}
+              >
+                {metricShortLabels[m]}
               </Text>
             </TouchableOpacity>
           ))}
@@ -365,7 +378,7 @@ const styles = StyleSheet.create({
   segment: {
     flex: 1,
     paddingVertical: 6,
-    paddingHorizontal: 8,
+    paddingHorizontal: 4,
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: 6,
@@ -379,9 +392,11 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   segmentText: {
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: '500',
     color: '#6B7280',
+    textAlign: 'center',
+    numberOfLines: 1,
   },
   segmentTextActive: {
     color: '#1F2937',
