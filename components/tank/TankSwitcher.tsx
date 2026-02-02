@@ -8,7 +8,6 @@ import {
   Dimensions,
   ListRenderItemInfo,
 } from 'react-native';
-import { Plus } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { useUnitSettings } from '@/store/UnitSettingsContext';
 import { useTheme } from '@/store/ThemeContext';
@@ -23,7 +22,6 @@ interface TankSwitcherProps {
   tanks: Tank[];
   selectedTankId: string | null;
   onSelectTank: (tankId: string) => void;
-  onCreateTank: () => void;
 }
 
 type TankItem = Tank | { id: '__new__'; isNewButton: true };
@@ -32,17 +30,13 @@ export default function TankSwitcher({
   tanks,
   selectedTankId,
   onSelectTank,
-  onCreateTank,
 }: TankSwitcherProps) {
   const { formatVolume } = useUnitSettings();
   const { colors, activeTheme } = useTheme();
   const flatListRef = useRef<FlatList<TankItem>>(null);
   
-  // Combine tanks with "Add New" button
-  const items: TankItem[] = [
-    ...tanks,
-    { id: '__new__', isNewButton: true } as TankItem,
-  ];
+  // Use tanks as items
+  const items: TankItem[] = tanks;
 
   // Scroll to selected tank when it changes
   useEffect(() => {
@@ -63,39 +57,15 @@ export default function TankSwitcher({
     onSelectTank(tankId);
   };
 
-  const handleCreateTank = async () => {
-    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    onCreateTank();
-  };
-
   const getItemLayout = (_data: ArrayLike<TankItem> | null | undefined, index: number) => ({
     length: CARD_WIDTH,
     offset: (CARD_WIDTH + CARD_SPACING) * index,
     index,
   });
 
-  const keyExtractor = (item: TankItem) => {
-    if ('isNewButton' in item && item.isNewButton) {
-      return '__new__';
-    }
-    return (item as Tank).id;
-  };
+  const keyExtractor = (item: TankItem) => (item as Tank).id;
 
   const renderItem = ({ item }: ListRenderItemInfo<TankItem>) => {
-    // Render "Add New Tank" button
-    if ('isNewButton' in item && item.isNewButton) {
-      return (
-        <TouchableOpacity
-          style={[styles.newTankCard, { backgroundColor: colors.card, borderColor: colors.primary }]}
-          onPress={handleCreateTank}
-          activeOpacity={0.7}
-        >
-          <Plus size={20} color={colors.primary} />
-          <Text style={[styles.newTankText, { color: colors.primary }]}>New Tank</Text>
-        </TouchableOpacity>
-      );
-    }
-
     // Render tank card
     const tank = item as Tank;
     const isActive = tank.id === selectedTankId;
@@ -212,24 +182,6 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   tankInfoActive: {
-    color: '#0D7377',
-  },
-  newTankCard: {
-    backgroundColor: 'rgba(255, 255, 255, 0.5)',
-    borderRadius: 16,
-    padding: 16,
-    width: CARD_WIDTH,
-    borderWidth: 2,
-    borderColor: '#0D7377',
-    borderStyle: 'dashed',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    flexDirection: 'row',
-  },
-  newTankText: {
-    fontSize: 14,
-    fontWeight: '600',
     color: '#0D7377',
   },
 });

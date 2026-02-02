@@ -553,9 +553,23 @@ export default function AquascapeScreen() {
             <View style={styles.header}>
               <View>
                 <Text style={[styles.title, { color: colors.text }]}>Aquascape Designer</Text>
-                <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
-                  Design your dream aquarium layout
-                </Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
+                    Design your dream aquarium layout
+                  </Text>
+                  {selectedTank && (
+                    <View style={[styles.waterTypeBadge, { 
+                      backgroundColor: selectedTank.waterType === 'saltwater' ? 'rgba(59, 130, 246, 0.15)' : 'rgba(34, 197, 94, 0.15)',
+                      borderColor: selectedTank.waterType === 'saltwater' ? 'rgba(59, 130, 246, 0.3)' : 'rgba(34, 197, 94, 0.3)'
+                    }]}>
+                      <Text style={[styles.waterTypeText, { 
+                        color: selectedTank.waterType === 'saltwater' ? '#3B82F6' : '#22C55E'
+                      }]}>
+                        {selectedTank.waterType === 'saltwater' ? '🌊 Saltwater' : '💧 Freshwater'}
+                      </Text>
+                    </View>
+                  )}
+                </View>
               </View>
               {isSaving && (
                 <View style={[styles.savingIndicator, { backgroundColor: 'rgba(78, 205, 196, 0.2)' }]}>
@@ -825,6 +839,16 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#64748B',
     marginTop: 4,
+  },
+  waterTypeBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  waterTypeText: {
+    fontSize: 12,
+    fontWeight: '600',
   },
   savingIndicator: {
     backgroundColor: 'rgba(78, 205, 196, 0.2)',

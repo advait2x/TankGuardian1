@@ -1092,7 +1092,6 @@ export default function MyTankScreen() {
               tanks={tanks}
               selectedTankId={selectedTankId}
               onSelectTank={selectTank}
-              onCreateTank={handleCreateNewTank}
             />
           </Animated.View>
 
