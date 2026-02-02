@@ -1,5 +1,6 @@
 import React from 'react';
-import { Image, StyleProp, ImageStyle } from 'react-native';
+import { StyleProp, ImageStyle } from 'react-native';
+import { Image } from 'expo-image';
 import { getCatalogPublicUrl } from '@/utils/storageUrls';
 
 interface FishThumbProps {
@@ -8,8 +9,12 @@ interface FishThumbProps {
   style?: StyleProp<ImageStyle>;
 }
 
+// Blurhash placeholder for loading state (light gray)
+const PLACEHOLDER_BLURHASH = 'L6PZfSi_.AyE_3t7t7R**0o#DgR4';
+
 /**
  * Reusable fish thumbnail component that safely renders images from Supabase Storage
+ * Uses expo-image for better caching and performance
  * Returns null if no image available - never crashes
  */
 export default function FishThumb({ imageKey, size = 44, style }: FishThumbProps) {
@@ -26,7 +31,10 @@ export default function FishThumb({ imageKey, size = 44, style }: FishThumbProps
     <Image
       source={{ uri }}
       style={[{ width: size, height: size }, style]}
-      resizeMode="contain"
+      contentFit="contain"
+      placeholder={{ blurhash: PLACEHOLDER_BLURHASH }}
+      transition={200}
+      cachePolicy="disk"
       onError={(error) => {
         // Silently fail - log as warning to avoid error pop-ups
         if (__DEV__) {
@@ -36,4 +44,3 @@ export default function FishThumb({ imageKey, size = 44, style }: FishThumbProps
     />
   );
 }
-

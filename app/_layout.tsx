@@ -16,6 +16,7 @@ import { MascotProvider } from "@/components/mascot/MascotContext";
 import { UnitSettingsProvider } from "@/store/UnitSettingsContext";
 import { QueryClientProvider } from "@/store/QueryClientProvider";
 import { listFishSpecies } from "@/utils/remoteFishCatalog";
+import { preloadCatalogImages } from "@/utils/imagePreloader";
 
 // Prevent the splash screen from auto-hiding before asset loading is complete.
 SplashScreen.preventAutoHideAsync();
@@ -92,6 +93,12 @@ export default function RootLayout() {
           console.warn('[Supabase] catalog failed (fallback active)');
         });
     }
+  }, []);
+
+  // Preload all catalog images on app startup
+  useEffect(() => {
+    // Start preloading images in the background
+    preloadCatalogImages();
   }, []);
 
   if (!loaded) {
