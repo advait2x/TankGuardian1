@@ -48,6 +48,7 @@ import TankSwitcher from "@/components/tank/TankSwitcher";
 import AnimatedBackground from "@/components/ui/AnimatedBackground";
 import GlassCard from "@/components/ui/GlassCard";
 import Button from "@/components/ui/Button";
+import { TankEquipmentSection, TankEquipmentSectionRef } from "@/components/equipment/TankEquipmentSection";
 import Badge from "@/components/ui/Badge";
 import Modal from "@/components/ui/Modal";
 import Input from "@/components/ui/Input";
@@ -314,6 +315,9 @@ export default function MyTankScreen() {
 
   // Mounted ref to track component lifecycle
   const isMounted = useRef(true);
+  
+  // Ref for equipment section to trigger refresh
+  const equipmentSectionRef = useRef<TankEquipmentSectionRef>(null);
 
   // Use React Query for fish catalog - passing search query ensures we search the full DB
   const { data: fishCatalog = [], isLoading: isCatalogLoading } =
@@ -563,6 +567,11 @@ export default function MyTankScreen() {
           .catch(() => {
             // Silently fail
           });
+
+        // Refresh equipment section
+        if (equipmentSectionRef.current) {
+          equipmentSectionRef.current.refresh();
+        }
       }
     }, [selectedTankId, session?.user?.id, tankContainerSize]),
   );
@@ -1983,6 +1992,22 @@ export default function MyTankScreen() {
               </View>
             )}
           </Animated.View>
+
+          {/* Equipment Section */}
+          {selectedTank.id && (
+            <Animated.View entering={FadeInDown.delay(240).duration(220)}>
+              <TankEquipmentSection
+                ref={equipmentSectionRef}
+                tankId={selectedTank.id}
+                onAddEquipment={() =>
+                  router.push({
+                    pathname: '/(tabs)/catalog',
+                    params: { tab: 'equipment' }
+                  })
+                }
+              />
+            </Animated.View>
+          )}
 
           {/* Latest Parameters */}
           {selectedTank.parametersLog.length > 0 && (

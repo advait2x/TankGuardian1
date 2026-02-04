@@ -67,4 +67,10 @@ export function getCatalogPublicUrl(path?: string | null): string | null {
   return `${SUPABASE_URL}/storage/v1/object/public/catalog/${normalizedPath}`;
 }
 
+/**
+ * Alias for getCatalogPublicUrl for backwards compatibility
+ */
+export function getPublicUrl(path?: string | null): string | null {
+  return getCatalogPublicUrl(path);
+}
 

@@ -87,6 +87,65 @@ export interface Equipment {
   tags: string[];
 }
 
+// Equipment Catalog Types (for new equipment feature)
+export type EquipmentCategory =
+  | 'tank'
+  | 'filter'
+  | 'heater'
+  | 'thermometer'
+  | 'light'
+  | 'air_pump'
+  | 'co2'
+  | 'filter_media'
+  | 'water_conditioner'
+  | 'test_kit'
+  | 'maintenance'
+  | 'feeder'
+  | 'powerhead'
+  | 'wavemaker'
+  | 'skimmer'
+  | 'ato'
+  | 'return_pump';
+
+export type EquipmentWaterType = 'freshwater' | 'saltwater' | 'both';
+export type EquipmentStatus = 'installed' | 'wishlist' | 'owned' | 'removed';
+
+export interface EquipmentCatalogItem {
+  id: string;
+  slug: string;
+  brand: string;
+  model: string;
+  name: string;
+  category: EquipmentCategory;
+  waterType: EquipmentWaterType;
+  minTankGal: number | null;
+  maxTankGal: number | null;
+  wattage: number | null;
+  flowGph: number | null;
+  description: string | null;
+  pros: string | null;
+  cons: string | null;
+  affiliateUrl: string | null;
+  officialUrl: string | null;
+  imageKey: string | null;
+  isActive: boolean;
+  createdAt: string;
+}
+
+export interface TankEquipment {
+  id: string;
+  tankId: string;
+  equipmentId: string;
+  status: EquipmentStatus;
+  quantity: number;
+  notes: string | null;
+  installedAt: string | null;
+  removedAt: string | null;
+  createdAt: string;
+  // Nested catalog item
+  equipment?: EquipmentCatalogItem;
+}
+
 export interface Decor {
   id: string;
   type: 'driftwood' | 'rock' | 'ornament' | 'substrate' | 'other';
