@@ -278,6 +278,7 @@ export default function MyTankScreen() {
     diseaseCheckCount,
     incrementDiseaseCheck,
     updateTank,
+    deleteTank,
   } = useApp();
   const { session } = useAuth();
   const { showToast } = useToast();
@@ -301,6 +302,7 @@ export default function MyTankScreen() {
   >("uploading");
   const [showEditTankModal, setShowEditTankModal] = useState(false);
   const [editTankName, setEditTankName] = useState("");
+  const [showDeleteConfirmation, setShowDeleteConfirmation] = useState(false);
   const [currentStepMessage, setCurrentStepMessage] = useState<string>("");
   const [showPhotoPickerSheet, setShowPhotoPickerSheet] = useState(false);
   const [showDiseaseHistory, setShowDiseaseHistory] = useState(false);
@@ -815,6 +817,36 @@ export default function MyTankScreen() {
     }
   };
 
+  const handleDeleteTank = async () => {
+    if (!selectedTank) return;
+
+    try {
+      await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      await deleteTank(selectedTank.id);
+
+      // Close modals
+      setShowDeleteConfirmation(false);
+      setShowEditTankModal(false);
+
+      // Show success message
+      showToast("Tank deleted successfully", "success");
+      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+
+      // Navigate to first available tank or show empty state
+      if (tanks.length > 1) {
+        const remainingTanks = tanks.filter(t => t.id !== selectedTank.id);
+        if (remainingTanks.length > 0) {
+          selectTank(remainingTanks[0].id);
+        }
+      }
+    } catch (error) {
+      console.error("[MyTank] Error deleting tank:", error);
+      showToast("Failed to delete tank", "error");
+      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+    }
+  };
+
+
   // View a specific disease check in detail
   const handleViewHistoryCheck = async (check: any) => {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -882,7 +914,7 @@ export default function MyTankScreen() {
         (ImagePicker as any).MediaType?.Image
           ? [(ImagePicker as any).MediaType.Image]
           : // Older SDKs / Expo Go
-            (ImagePicker as any).MediaTypeOptions?.Images
+          (ImagePicker as any).MediaTypeOptions?.Images
             ? (ImagePicker as any).MediaTypeOptions.Images
             : undefined;
 
@@ -2263,6 +2295,18 @@ export default function MyTankScreen() {
               style={{ flex: 1 }}
             />
           </View>
+
+          {/* Delete Tank Button */}
+          <Button
+            title="Delete Tank"
+            onPress={() => {
+              setShowEditTankModal(false);
+              setShowDeleteConfirmation(true);
+            }}
+            variant="danger"
+            size="medium"
+            fullWidth
+          />
         </View>
       </Modal>
 
@@ -2284,7 +2328,7 @@ export default function MyTankScreen() {
           <View style={styles.fishDetailContent}>
             <View style={styles.fishDetailHeader}>
               {(selectedSpecies as any)?.image_key ||
-              (selectedSpecies as any)?.imageKey ? (
+                (selectedSpecies as any)?.imageKey ? (
                 <View style={styles.fishDetailIcon}>
                   <FishThumb
                     imageKey={
@@ -3021,7 +3065,7 @@ export default function MyTankScreen() {
                           {
                             color:
                               result.likelyIssue === "No issues detected" ||
-                              !result.likelyIssue
+                                !result.likelyIssue
                                 ? "#64748B"
                                 : result.severity === "low"
                                   ? "#10B981"
@@ -3034,11 +3078,11 @@ export default function MyTankScreen() {
                         ]}
                       >
                         {result.likelyIssue === "No issues detected" ||
-                        !result.likelyIssue
+                          !result.likelyIssue
                           ? "N/A"
                           : result.severity
                             ? result.severity.charAt(0).toUpperCase() +
-                              result.severity.slice(1)
+                            result.severity.slice(1)
                             : "N/A"}
                       </Text>
                     </View>
@@ -3238,6 +3282,42 @@ export default function MyTankScreen() {
           </ScrollView>
         </Modal>
       )}
+
+      {/* Delete Confirmation Modal */}
+      <Modal
+        visible={showDeleteConfirmation}
+        onClose={() => setShowDeleteConfirmation(false)}
+        title="Delete Tank?"
+        size="small"
+      >
+        <View style={styles.deleteConfirmContent}>
+          <AlertCircle size={48} color="#EF4444" />
+          <Text style={[styles.deleteConfirmTitle, { color: colors.text }]}>
+            Are you sure?
+          </Text>
+          <Text style={[styles.deleteConfirmText, { color: colors.textSecondary }]}>
+            This will permanently delete "{selectedTank?.name}" and all associated data including fish, water logs, and aquascape layouts. This action cannot be undone.
+          </Text>
+
+          <View style={styles.deleteConfirmActions}>
+            <Button
+              title="Cancel"
+              onPress={() => {
+                setShowDeleteConfirmation(false);
+                setShowEditTankModal(true);
+              }}
+              variant="secondary"
+              size="medium"
+            />
+            <Button
+              title="Delete"
+              onPress={handleDeleteTank}
+              variant="danger"
+              size="medium"
+            />
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -4133,9 +4213,36 @@ const styles = StyleSheet.create({
     gap: 20,
     padding: 4,
   },
+  editTankContent: {
+    gap: 20,
+    padding: 4,
+  },
   editTankActions: {
     flexDirection: "row",
     gap: 12,
     marginTop: 8,
   },
+  deleteConfirmContent: {
+    alignItems: "center",
+    gap: 16,
+    padding: 8,
+  },
+  deleteConfirmTitle: {
+    fontSize: 20,
+    fontWeight: "700",
+    textAlign: "center",
+  },
+  deleteConfirmText: {
+    fontSize: 14,
+    textAlign: "center",
+    lineHeight: 20,
+  },
+  deleteConfirmActions: {
+    flexDirection: "row",
+    gap: 12,
+    marginTop: 16,
+    width: "100%",
+  },
 });
+
+
