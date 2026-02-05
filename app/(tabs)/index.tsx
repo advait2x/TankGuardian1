@@ -101,7 +101,7 @@ export default function HomeScreen() {
               <Text style={[styles.userName, { color: colors.text }]}>{currentUser?.displayName || 'Aquarist'} 👋</Text>
             </View>
             <View style={[styles.tankSelector, { backgroundColor: colors.tankBackground }]}>
-              <Text style={styles.tankName}>{selectedTank?.name || 'No tank'}</Text>
+              <Text style={[styles.tankName, { color: colors.primaryLight }]}>{selectedTank?.name || 'No tank'}</Text>
             </View>
           </Animated.View>
 

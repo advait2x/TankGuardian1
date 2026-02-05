@@ -481,7 +481,7 @@ export default function CatalogScreen() {
                             size="small"
                           />
                           {flora.lightRequirement && (
-                            <Text style={styles.fishCardSize}>{flora.lightRequirement} light</Text>
+                            <Text style={[styles.fishCardSize, { color: colors.textSecondary }]}>{flora.lightRequirement} light</Text>
                           )}
                         </View>
                       </GlassCard>
@@ -610,7 +610,7 @@ export default function CatalogScreen() {
         <View style={styles.filterContent}>
           {/* Water Type - Show for all tabs */}
           <View style={styles.filterSection}>
-            <Text style={styles.filterSectionTitle}>Water Type</Text>
+            <Text style={[styles.filterSectionTitle, { color: colors.text }]}>Water Type</Text>
             <View style={styles.filterChips}>
               <Chip
                 label="Freshwater"
@@ -635,7 +635,7 @@ export default function CatalogScreen() {
           {/* Temperament - Only for Fish */}
           {activeTab === 'fish' && (
             <View style={styles.filterSection}>
-              <Text style={styles.filterSectionTitle}>Temperament</Text>
+              <Text style={[styles.filterSectionTitle, { color: colors.text }]}>Temperament</Text>
               <View style={styles.filterChips}>
                 {temperamentFilters.map(temp => (
                   <Chip
@@ -652,7 +652,7 @@ export default function CatalogScreen() {
           {/* Difficulty - For Fish and Plants */}
           {(activeTab === 'fish' || activeTab === 'plants') && (
             <View style={styles.filterSection}>
-              <Text style={styles.filterSectionTitle}>Difficulty</Text>
+              <Text style={[styles.filterSectionTitle, { color: colors.text }]}>Difficulty</Text>
               <View style={styles.filterChips}>
                 {difficultyFilters.map(diff => (
                   <Chip
@@ -712,26 +712,26 @@ export default function CatalogScreen() {
             </View>
 
             <View style={styles.compatibilityStats}>
-              <View style={[styles.compatibilityStat, { backgroundColor: colors.background }]}>
+              <View style={styles.compatibilityStat}>
                 <Text style={[styles.compatibilityStatLabel, { color: colors.textSecondary }]}>Min Tank</Text>
                 <Text style={[styles.compatibilityStatValue, { color: colors.text }]}>{formatVolume(selectedSpecies.minTankGallons)}</Text>
               </View>
-              <View style={[styles.compatibilityStat, { backgroundColor: colors.background }]}>
+              <View style={styles.compatibilityStat}>
                 <Text style={[styles.compatibilityStatLabel, { color: colors.textSecondary }]}>Adult Size</Text>
                 <Text style={[styles.compatibilityStatValue, { color: colors.text }]}>{formatLength(selectedSpecies.adultSizeInches)}</Text>
               </View>
-              <View style={[styles.compatibilityStat, { backgroundColor: colors.background }]}>
+              <View style={styles.compatibilityStat}>
                 <Text style={[styles.compatibilityStatLabel, { color: colors.textSecondary }]}>Temperament</Text>
                 <Text style={[styles.compatibilityStatValue, { color: colors.text }]}>{selectedSpecies.temperament}</Text>
               </View>
               {selectedSpecies.tempMin !== undefined && selectedSpecies.tempMax !== undefined && (
-                <View style={[styles.compatibilityStat, { backgroundColor: colors.background }]}>
+                <View style={styles.compatibilityStat}>
                   <Text style={[styles.compatibilityStatLabel, { color: colors.textSecondary }]}>Temp Range</Text>
                   <Text style={[styles.compatibilityStatValue, { color: colors.text }]}>{selectedSpecies.tempMin}-{selectedSpecies.tempMax}°F</Text>
                 </View>
               )}
               {selectedSpecies.phMin !== undefined && selectedSpecies.phMax !== undefined && (
-                <View style={[styles.compatibilityStat, { backgroundColor: colors.background }]}>
+                <View style={styles.compatibilityStat}>
                   <Text style={[styles.compatibilityStatLabel, { color: colors.textSecondary }]}>pH Range</Text>
                   <Text style={[styles.compatibilityStatValue, { color: colors.text }]}>{selectedSpecies.phMin}-{selectedSpecies.phMax}</Text>
                 </View>
@@ -842,46 +842,46 @@ export default function CatalogScreen() {
                 <FishThumb imageKey={selectedFlora.imageKey ?? null} size={72} />
               </View>
               <View style={styles.compatibilityInfo}>
-                <Text style={styles.compatibilityName}>{selectedFlora.commonName}</Text>
-                <Text style={styles.compatibilityScientific}>{selectedFlora.scientificName || selectedFlora.waterType}</Text>
+                <Text style={[styles.compatibilityName, { color: colors.text }]}>{selectedFlora.commonName}</Text>
+                <Text style={[styles.compatibilityScientific, { color: colors.textSecondary }]}>{selectedFlora.scientificName || selectedFlora.waterType}</Text>
               </View>
             </View>
 
             <View style={styles.compatibilityStats}>
               <View style={styles.compatibilityStat}>
-                <Text style={styles.compatibilityStatLabel}>Water Type</Text>
-                <Text style={styles.compatibilityStatValue}>{selectedFlora.waterType}</Text>
+                <Text style={[styles.compatibilityStatLabel, { color: colors.textSecondary }]}>Water Type</Text>
+                <Text style={[styles.compatibilityStatValue, { color: colors.text }]}>{selectedFlora.waterType}</Text>
               </View>
               <View style={styles.compatibilityStat}>
-                <Text style={styles.compatibilityStatLabel}>Difficulty</Text>
-                <Text style={styles.compatibilityStatValue}>{selectedFlora.difficulty}</Text>
+                <Text style={[styles.compatibilityStatLabel, { color: colors.textSecondary }]}>Difficulty</Text>
+                <Text style={[styles.compatibilityStatValue, { color: colors.text }]}>{selectedFlora.difficulty}</Text>
               </View>
               {selectedFlora.lightRequirement && (
                 <View style={styles.compatibilityStat}>
-                  <Text style={styles.compatibilityStatLabel}>Light</Text>
-                  <Text style={styles.compatibilityStatValue}>{selectedFlora.lightRequirement}</Text>
+                  <Text style={[styles.compatibilityStatLabel, { color: colors.textSecondary }]}>Light</Text>
+                  <Text style={[styles.compatibilityStatValue, { color: colors.text }]}>{selectedFlora.lightRequirement}</Text>
                 </View>
               )}
             </View>
 
             {selectedFlora.careNotes && (
-              <View style={styles.careNotesContainer}>
-                <Text style={styles.careNotesTitle}>Care Notes</Text>
-                <Text style={styles.careNotesText}>{selectedFlora.careNotes}</Text>
+              <View style={[styles.careNotesContainer, { backgroundColor: colors.card }]}>
+                <Text style={[styles.careNotesTitle, { color: colors.primary }]}>Care Notes</Text>
+                <Text style={[styles.careNotesText, { color: colors.text }]}>{selectedFlora.careNotes}</Text>
               </View>
             )}
 
             {selectedFlora.placement && (
-              <View style={styles.careNotesContainer}>
-                <Text style={styles.careNotesTitle}>Placement</Text>
-                <Text style={styles.careNotesText}>Best suited for {selectedFlora.placement} areas of the aquarium.</Text>
+              <View style={[styles.careNotesContainer, { backgroundColor: colors.card }]}>
+                <Text style={[styles.careNotesTitle, { color: colors.primary }]}>Placement</Text>
+                <Text style={[styles.careNotesText, { color: colors.text }]}>Best suited for {selectedFlora.placement} areas of the aquarium.</Text>
               </View>
             )}
 
             {selectedFlora.growthRate && (
-              <View style={styles.careNotesContainer}>
-                <Text style={styles.careNotesTitle}>Growth Rate</Text>
-                <Text style={styles.careNotesText}>Grows at a {selectedFlora.growthRate} pace.</Text>
+              <View style={[styles.careNotesContainer, { backgroundColor: colors.card }]}>
+                <Text style={[styles.careNotesTitle, { color: colors.primary }]}>Growth Rate</Text>
+                <Text style={[styles.careNotesText, { color: colors.text }]}>Grows at a {selectedFlora.growthRate} pace.</Text>
               </View>
             )}
           </View>
@@ -905,39 +905,39 @@ export default function CatalogScreen() {
                 <FishThumb imageKey={selectedHardscape.imageKey ?? null} size={72} />
               </View>
               <View style={styles.compatibilityInfo}>
-                <Text style={styles.compatibilityName}>{selectedHardscape.name}</Text>
-                <Text style={styles.compatibilityScientific}>{selectedHardscape.material || selectedHardscape.itemType}</Text>
+                <Text style={[styles.compatibilityName, { color: colors.text }]}>{selectedHardscape.name}</Text>
+                <Text style={[styles.compatibilityScientific, { color: colors.textSecondary }]}>{selectedHardscape.material || selectedHardscape.itemType}</Text>
               </View>
             </View>
 
             <View style={styles.compatibilityStats}>
               <View style={styles.compatibilityStat}>
-                <Text style={styles.compatibilityStatLabel}>Type</Text>
-                <Text style={styles.compatibilityStatValue}>{selectedHardscape.itemType}</Text>
+                <Text style={[styles.compatibilityStatLabel, { color: colors.textSecondary }]}>Type</Text>
+                <Text style={[styles.compatibilityStatValue, { color: colors.text }]}>{selectedHardscape.itemType}</Text>
               </View>
               <View style={styles.compatibilityStat}>
-                <Text style={styles.compatibilityStatLabel}>Water Type</Text>
-                <Text style={styles.compatibilityStatValue}>{selectedHardscape.waterType}</Text>
+                <Text style={[styles.compatibilityStatLabel, { color: colors.textSecondary }]}>Water Type</Text>
+                <Text style={[styles.compatibilityStatValue, { color: colors.text }]}>{selectedHardscape.waterType}</Text>
               </View>
               <View style={styles.compatibilityStat}>
-                <Text style={styles.compatibilityStatLabel}>Water Chemistry</Text>
-                <Text style={styles.compatibilityStatValue}>
+                <Text style={[styles.compatibilityStatLabel, { color: colors.textSecondary }]}>Water Chemistry</Text>
+                <Text style={[styles.compatibilityStatValue, { color: colors.text }]}>
                   {selectedHardscape.affectsWaterChemistry ? 'Affects' : 'Inert'}
                 </Text>
               </View>
             </View>
 
             {selectedHardscape.description && (
-              <View style={styles.careNotesContainer}>
-                <Text style={styles.careNotesTitle}>Description</Text>
-                <Text style={styles.careNotesText}>{selectedHardscape.description}</Text>
+              <View style={[styles.careNotesContainer, { backgroundColor: colors.card }]}>
+                <Text style={[styles.careNotesTitle, { color: colors.primary }]}>Description</Text>
+                <Text style={[styles.careNotesText, { color: colors.text }]}>{selectedHardscape.description}</Text>
               </View>
             )}
 
             {selectedHardscape.careNotes && (
-              <View style={styles.careNotesContainer}>
-                <Text style={styles.careNotesTitle}>Care Notes</Text>
-                <Text style={styles.careNotesText}>{selectedHardscape.careNotes}</Text>
+              <View style={[styles.careNotesContainer, { backgroundColor: colors.card }]}>
+                <Text style={[styles.careNotesTitle, { color: colors.primary }]}>Care Notes</Text>
+                <Text style={[styles.careNotesText, { color: colors.text }]}>{selectedHardscape.careNotes}</Text>
               </View>
             )}
           </View>
@@ -961,28 +961,28 @@ export default function CatalogScreen() {
                 <Wrench size={48} color="#fff" />
               </View>
               <View style={styles.compatibilityInfo}>
-                <Text style={styles.compatibilityName}>{selectedEquipment.brand}</Text>
-                <Text style={styles.compatibilityScientific}>{selectedEquipment.model}</Text>
+                <Text style={[styles.compatibilityName, { color: colors.text }]}>{selectedEquipment.brand}</Text>
+                <Text style={[styles.compatibilityScientific, { color: colors.textSecondary }]}>{selectedEquipment.model}</Text>
               </View>
             </View>
 
             <View style={styles.compatibilityStats}>
               <View style={styles.compatibilityStat}>
-                <Text style={styles.compatibilityStatLabel}>Category</Text>
-                <Text style={styles.compatibilityStatValue}>
+                <Text style={[styles.compatibilityStatLabel, { color: colors.textSecondary }]}>Category</Text>
+                <Text style={[styles.compatibilityStatValue, { color: colors.text }]}>
                   {selectedEquipment.category.replace(/_/g, ' ').toUpperCase()}
                 </Text>
               </View>
               <View style={styles.compatibilityStat}>
-                <Text style={styles.compatibilityStatLabel}>Water Type</Text>
-                <Text style={styles.compatibilityStatValue}>
+                <Text style={[styles.compatibilityStatLabel, { color: colors.textSecondary }]}>Water Type</Text>
+                <Text style={[styles.compatibilityStatValue, { color: colors.text }]}>
                   {selectedEquipment.waterType === 'both' ? 'Freshwater & Saltwater' : selectedEquipment.waterType}
                 </Text>
               </View>
               {(selectedEquipment.minTankGal || selectedEquipment.maxTankGal) && (
                 <View style={styles.compatibilityStat}>
-                  <Text style={styles.compatibilityStatLabel}>Tank Size</Text>
-                  <Text style={styles.compatibilityStatValue}>
+                  <Text style={[styles.compatibilityStatLabel, { color: colors.textSecondary }]}>Tank Size</Text>
+                  <Text style={[styles.compatibilityStatValue, { color: colors.text }]}>
                     {selectedEquipment.minTankGal || '?'}-{selectedEquipment.maxTankGal || '?'} gal
                   </Text>
                 </View>
@@ -994,14 +994,14 @@ export default function CatalogScreen() {
               <View style={styles.compatibilityStats}>
                 {selectedEquipment.wattage && (
                   <View style={styles.compatibilityStat}>
-                    <Text style={styles.compatibilityStatLabel}>Power</Text>
-                    <Text style={styles.compatibilityStatValue}>{selectedEquipment.wattage}W</Text>
+                    <Text style={[styles.compatibilityStatLabel, { color: colors.textSecondary }]}>Power</Text>
+                    <Text style={[styles.compatibilityStatValue, { color: colors.text }]}>{selectedEquipment.wattage}W</Text>
                   </View>
                 )}
                 {selectedEquipment.flowGph && (
                   <View style={styles.compatibilityStat}>
-                    <Text style={styles.compatibilityStatLabel}>Flow Rate</Text>
-                    <Text style={styles.compatibilityStatValue}>{selectedEquipment.flowGph} GPH</Text>
+                    <Text style={[styles.compatibilityStatLabel, { color: colors.textSecondary }]}>Flow Rate</Text>
+                    <Text style={[styles.compatibilityStatValue, { color: colors.text }]}>{selectedEquipment.flowGph} GPH</Text>
                   </View>
                 )}
               </View>
@@ -1009,25 +1009,25 @@ export default function CatalogScreen() {
 
             {/* Description */}
             {selectedEquipment.description && (
-              <View style={styles.careNotesContainer}>
-                <Text style={styles.careNotesTitle}>Description</Text>
-                <Text style={styles.careNotesText}>{selectedEquipment.description}</Text>
+              <View style={[styles.careNotesContainer, { backgroundColor: colors.card }]}>
+                <Text style={[styles.careNotesTitle, { color: colors.primary }]}>Description</Text>
+                <Text style={[styles.careNotesText, { color: colors.text }]}>{selectedEquipment.description}</Text>
               </View>
             )}
 
             {/* Pros */}
             {selectedEquipment.pros && (
-              <View style={[styles.careNotesContainer, { backgroundColor: '#F0FDF4' }]}>
-                <Text style={[styles.careNotesTitle, { color: '#166534' }]}>Pros</Text>
-                <Text style={[styles.careNotesText, { color: '#15803D' }]}>{selectedEquipment.pros}</Text>
+              <View style={[styles.careNotesContainer, { backgroundColor: activeTheme === 'dark' ? 'rgba(34, 197, 94, 0.15)' : '#F0FDF4' }]}>
+                <Text style={[styles.careNotesTitle, { color: activeTheme === 'dark' ? '#4ADE80' : '#166534' }]}>Pros</Text>
+                <Text style={[styles.careNotesText, { color: activeTheme === 'dark' ? '#4ADE80' : '#15803D' }]}>{selectedEquipment.pros}</Text>
               </View>
             )}
 
             {/* Cons */}
             {selectedEquipment.cons && (
-              <View style={[styles.careNotesContainer, { backgroundColor: '#FEF2F2' }]}>
-                <Text style={[styles.careNotesTitle, { color: '#991B1B' }]}>Cons</Text>
-                <Text style={[styles.careNotesText, { color: '#DC2626' }]}>{selectedEquipment.cons}</Text>
+              <View style={[styles.careNotesContainer, { backgroundColor: activeTheme === 'dark' ? 'rgba(239, 68, 68, 0.15)' : '#FEF2F2' }]}>
+                <Text style={[styles.careNotesTitle, { color: activeTheme === 'dark' ? '#F87171' : '#991B1B' }]}>Cons</Text>
+                <Text style={[styles.careNotesText, { color: activeTheme === 'dark' ? '#F87171' : '#DC2626' }]}>{selectedEquipment.cons}</Text>
               </View>
             )}
 

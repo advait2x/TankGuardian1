@@ -16,6 +16,7 @@ interface ThemeContextType {
     textSecondary: string;
     border: string;
     primary: string;
+    primaryLight: string;
     tankBackground: string;
   };
 }
@@ -69,6 +70,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     textSecondary: '#A0A0A0',
     border: '#333333',
     primary: '#0D7377',
+    primaryLight: '#5AABAE',
     tankBackground: 'rgba(255,255,255,0.05)',
   } : {
     background: '#E8F4F8',
@@ -77,6 +79,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     textSecondary: '#64748B',
     border: 'rgba(0,0,0,0.05)',
     primary: '#0D7377',
+    primaryLight: '#0D7377',
     tankBackground: 'rgba(13, 115, 119, 0.1)',
   };
 

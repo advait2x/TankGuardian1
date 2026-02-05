@@ -10,6 +10,7 @@ import { HardscapeItem, getHardscapeCatalog } from '@/utils/hardscapeCatalogAdap
 import FishThumb from '@/components/FishThumb';
 import Badge from '@/components/ui/Badge';
 import { useApp } from '@/store/AppContext';
+import { useTheme } from '@/store/ThemeContext';
 
 interface HardscapeSelectionSheetProps {
   visible: boolean;
@@ -19,6 +20,7 @@ interface HardscapeSelectionSheetProps {
 
 export default function HardscapeSelectionSheet({ visible, onClose, onSelect }: HardscapeSelectionSheetProps) {
   const { tanks, selectedTankId } = useApp();
+  const { colors, activeTheme } = useTheme();
   const selectedTank = tanks.find(t => t.id === selectedTankId);
   
   const [hardscapeCatalog, setHardscapeCatalog] = useState<HardscapeItem[]>([]);
@@ -71,15 +73,15 @@ export default function HardscapeSelectionSheet({ visible, onClose, onSelect }: 
     <Modal visible={visible} onClose={onClose} title="Select Decoration" scrollable={false}>
       {!selectedTank ? (
         <View style={styles.emptyContainer}>
-          <Text style={styles.emptyText}>No tank selected</Text>
+          <Text style={[styles.emptyText, { color: colors.textSecondary }]}>No tank selected</Text>
         </View>
       ) : isLoading ? (
         <View style={styles.emptyContainer}>
-          <ActivityIndicator size="large" color="#0D7377" />
+          <ActivityIndicator size="large" color={colors.primary} />
         </View>
       ) : hardscapeCatalog.length === 0 ? (
         <View style={styles.emptyContainer}>
-          <Text style={styles.emptyText}>No decorations available for {selectedTank.waterType} tanks</Text>
+          <Text style={[styles.emptyText, { color: colors.textSecondary }]}>No decorations available for {selectedTank.waterType} tanks</Text>
         </View>
       ) : (
         <FlatList
@@ -87,15 +89,15 @@ export default function HardscapeSelectionSheet({ visible, onClose, onSelect }: 
           keyExtractor={(item) => item.id}
           renderItem={({ item }) => (
             <TouchableOpacity
-              style={styles.item}
+              style={[styles.item, { backgroundColor: colors.card }]}
               onPress={() => handleSelect(item)}
             >
-              <View style={styles.itemIcon}>
+              <View style={[styles.itemIcon, { backgroundColor: activeTheme === 'dark' ? 'rgba(255,255,255,0.1)' : '#F1F5F9' }]}>
                 <FishThumb imageKey={item.imageKey ?? null} size={48} />
               </View>
               <View style={styles.itemInfo}>
-                <Text style={styles.itemName}>{item.name}</Text>
-                <Text style={styles.itemScientific}>{item.material || item.itemType}</Text>
+                <Text style={[styles.itemName, { color: colors.text }]}>{item.name}</Text>
+                <Text style={[styles.itemScientific, { color: colors.textSecondary }]}>{item.material || item.itemType}</Text>
                 <View style={styles.itemBadges}>
                   <Badge label={item.itemType} variant="default" size="small" />
                   {item.affectsWaterChemistry && (
@@ -121,7 +123,6 @@ const styles = StyleSheet.create({
   },
   emptyText: {
     fontSize: 15,
-    color: '#64748B',
     textAlign: 'center',
   },
   listContent: {
@@ -130,7 +131,6 @@ const styles = StyleSheet.create({
   item: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.8)',
     borderRadius: 12,
     padding: 12,
     marginBottom: 12,
@@ -139,7 +139,6 @@ const styles = StyleSheet.create({
     width: 56,
     height: 56,
     borderRadius: 12,
-    backgroundColor: '#F1F5F9',
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 12,
@@ -150,12 +149,10 @@ const styles = StyleSheet.create({
   itemName: {
     fontSize: 15,
     fontWeight: '600',
-    color: '#1A252F',
     marginBottom: 2,
   },
   itemScientific: {
     fontSize: 13,
-    color: '#64748B',
     marginBottom: 6,
   },
   itemBadges: {
@@ -168,3 +165,4 @@ const styles = StyleSheet.create({
     color: '#F59E0B',
   },
 });
+
