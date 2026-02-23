@@ -3,9 +3,9 @@ import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput } from 
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Animated, { FadeInDown, FadeIn } from 'react-native-reanimated';
-import { 
-  Search, 
-  Filter, 
+import {
+  Search,
+  Filter,
   Leaf,
   Box,
   Wrench,
@@ -59,7 +59,7 @@ export default function CatalogScreen() {
 
   const { showMascot, hideMascot } = useMascot();
   const { colors, activeTheme } = useTheme();
-  
+
   const [activeTab, setActiveTab] = useState<CatalogTab>('fish');
 
   // Check for tab parameter in URL to pre-select tab
@@ -92,42 +92,42 @@ export default function CatalogScreen() {
   const selectedTank = tanks.find(t => t.id === selectedTankId);
 
   // Determine waterType for database query (if exactly one type is selected)
-  const dbWaterType = selectedWaterType.length === 1 
+  const dbWaterType = selectedWaterType.length === 1
     ? (selectedWaterType[0] as 'freshwater' | 'saltwater' | 'brackish')
     : undefined;
 
   // React Query hooks for catalog data with automatic caching
-  const { 
-    data: fishCatalog = mockFishSpecies, 
-    isLoading: isLoadingFish 
-  } = useFishCatalog({ 
-    search: searchQuery, 
-    waterType: dbWaterType 
+  const {
+    data: fishCatalog = mockFishSpecies,
+    isLoading: isLoadingFish
+  } = useFishCatalog({
+    search: searchQuery,
+    waterType: dbWaterType
   });
 
-  const { 
-    data: floraCatalog = [], 
-    isLoading: isLoadingFlora 
-  } = useFloraCatalog({ 
-    search: searchQuery, 
+  const {
+    data: floraCatalog = [],
+    isLoading: isLoadingFlora
+  } = useFloraCatalog({
+    search: searchQuery,
     waterType: dbWaterType,
     difficulty: selectedDifficulty.length === 1 ? selectedDifficulty[0] as 'easy' | 'medium' | 'hard' : undefined
   });
 
-  const { 
-    data: hardscapeCatalog = [], 
-    isLoading: isLoadingHardscape 
-  } = useHardscapeCatalog({ 
-    search: searchQuery, 
-    waterType: dbWaterType 
+  const {
+    data: hardscapeCatalog = [],
+    isLoading: isLoadingHardscape
+  } = useHardscapeCatalog({
+    search: searchQuery,
+    waterType: dbWaterType
   });
 
-  const { 
-    data: equipmentCatalog = [], 
-    isLoading: isLoadingEquipment 
-  } = useEquipmentCatalog({ 
-    search: searchQuery, 
-    waterType: dbWaterType 
+  const {
+    data: equipmentCatalog = [],
+    isLoading: isLoadingEquipment
+  } = useEquipmentCatalog({
+    search: searchQuery,
+    waterType: dbWaterType
   });
 
   // Show search mascot on catalog screen briefly
@@ -141,13 +141,13 @@ export default function CatalogScreen() {
   const filteredFish = useMemo(() => {
     return fishCatalog.filter(fish => {
       const matchesSearch = fish.commonName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                           fish.scientificName.toLowerCase().includes(searchQuery.toLowerCase());
-      const matchesTemperament = selectedTemperament.length === 0 || 
-                                 selectedTemperament.includes(fish.temperament);
-      const matchesDifficulty = selectedDifficulty.length === 0 || 
-                                selectedDifficulty.includes(fish.difficulty);
-      const matchesWaterType = selectedWaterType.length === 0 || 
-                               selectedWaterType.includes(fish.waterType);
+        fish.scientificName.toLowerCase().includes(searchQuery.toLowerCase());
+      const matchesTemperament = selectedTemperament.length === 0 ||
+        selectedTemperament.includes(fish.temperament);
+      const matchesDifficulty = selectedDifficulty.length === 0 ||
+        selectedDifficulty.includes(fish.difficulty);
+      const matchesWaterType = selectedWaterType.length === 0 ||
+        selectedWaterType.includes(fish.waterType);
       return matchesSearch && matchesTemperament && matchesDifficulty && matchesWaterType;
     });
   }, [fishCatalog, searchQuery, selectedTemperament, selectedDifficulty, selectedWaterType]);
@@ -171,13 +171,13 @@ export default function CatalogScreen() {
 
     // Track temperament conflicts to avoid duplicates
     const conflictingTemperaments = new Set<string>();
-    
+
     for (const existing of existingFish) {
       const conflictKey = `${species.temperament}-${existing.temperament}`;
       const reverseConflictKey = `${existing.temperament}-${species.temperament}`;
-      
+
       if ((species.temperament === 'aggressive' && existing.temperament === 'peaceful') ||
-          (species.temperament === 'peaceful' && existing.temperament === 'aggressive')) {
+        (species.temperament === 'peaceful' && existing.temperament === 'aggressive')) {
         // Only add warning if we haven't already warned about this temperament combination
         if (!conflictingTemperaments.has(conflictKey) && !conflictingTemperaments.has(reverseConflictKey)) {
           warnings.push(`Temperament conflict: ${species.commonName} (${species.temperament}) may not do well with ${existing.temperament} fish in the tank`);
@@ -193,7 +193,7 @@ export default function CatalogScreen() {
     const currentBioload = existingFish.reduce((acc, f) => acc + f.adultSizeInches, 0);
     const newBioload = currentBioload + species.adultSizeInches;
     const maxBioload = tank.sizeGallons * 1.2;
-    
+
     if (newBioload > maxBioload) {
       warnings.push(`Overstocking risk: Adding ${species.commonName} would exceed recommended bioload`);
     }
@@ -209,7 +209,7 @@ export default function CatalogScreen() {
 
   const handleAddToTank = async () => {
     if (!selectedSpecies) return;
-    
+
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
 
     // Check if user has premium before allowing to add fish
@@ -235,7 +235,7 @@ export default function CatalogScreen() {
 
     try {
       const result = await addEquipmentToTank(tankId, selectedEquipment.id, status);
-      
+
       if (result.error) {
         showToast(`Failed to add equipment: ${result.error.message}`, 'error');
         return;
@@ -245,7 +245,7 @@ export default function CatalogScreen() {
         `${selectedEquipment.brand} ${selectedEquipment.model} added to ${status === 'installed' ? 'tank' : 'wishlist'}!`,
         'success'
       );
-      
+
       setShowAddEquipmentSheet(false);
       setSelectedEquipment(null);
     } catch (error) {
@@ -256,7 +256,7 @@ export default function CatalogScreen() {
 
   const handleConfirmAddFish = async (tankId: string, quantity: number) => {
     if (!selectedSpecies) return;
-    
+
     const targetTank = tanks.find(t => t.id === tankId);
     if (!targetTank) return;
 
@@ -267,22 +267,22 @@ export default function CatalogScreen() {
 
     setShowAddToTankSheet(false);
     setSelectedSpecies(null);
-    
+
     const plural = quantity > 1 ? `${quantity} ${selectedSpecies.commonName}` : selectedSpecies.commonName;
     showToast(`${plural} added to ${targetTank.name}!`, 'success');
   };
 
   const toggleFilter = (type: 'temperament' | 'difficulty' | 'waterType', value: string) => {
     if (type === 'temperament') {
-      setSelectedTemperament(prev => 
+      setSelectedTemperament(prev =>
         prev.includes(value) ? prev.filter(t => t !== value) : [...prev, value]
       );
     } else if (type === 'difficulty') {
-      setSelectedDifficulty(prev => 
+      setSelectedDifficulty(prev =>
         prev.includes(value) ? prev.filter(d => d !== value) : [...prev, value]
       );
     } else if (type === 'waterType') {
-      setSelectedWaterType(prev => 
+      setSelectedWaterType(prev =>
         prev.includes(value) ? prev.filter(w => w !== value) : [...prev, value]
       );
     }
@@ -299,7 +299,7 @@ export default function CatalogScreen() {
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <AnimatedBackground variant={activeTheme === 'dark' ? 'dark' : 'light'} />
-      
+
       <SafeAreaView style={styles.safeArea} edges={['top']}>
         {/* Header */}
         <Animated.View entering={FadeInDown.duration(220)} style={styles.header}>
@@ -311,8 +311,8 @@ export default function CatalogScreen() {
 
         {/* Tab Selector */}
         <Animated.View entering={FadeInDown.delay(100).duration(220)} style={styles.tabContainer}>
-          <ScrollView 
-            horizontal 
+          <ScrollView
+            horizontal
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={styles.tabContent}
           >
@@ -330,7 +330,7 @@ export default function CatalogScreen() {
                   onPress={() => setActiveTab(tab.id)}
                 >
                   {tab.id === 'fish' ? (
-                     <MascotIcon variant="search" size={20} withHalo={false} />
+                    <MascotIcon variant="search" size={20} withHalo={false} />
                   ) : (
                     <Icon size={20} color={isActive ? '#FFF' : colors.textSecondary} />
                   )}
@@ -365,9 +365,9 @@ export default function CatalogScreen() {
               </TouchableOpacity>
             )}
           </View>
-          <TouchableOpacity 
+          <TouchableOpacity
             style={[
-              styles.filterButton, 
+              styles.filterButton,
               showFilters && { backgroundColor: colors.primary, borderColor: colors.primary },
               !showFilters && { backgroundColor: colors.card, borderColor: colors.border }
             ]}
@@ -388,43 +388,43 @@ export default function CatalogScreen() {
               <View style={styles.fishGrid}>
                 {filteredFish.map((fish, index) => {
                   const hasImage = (fish as any).image_key || (fish as any).imageKey;
-                  
+
                   return (
-                  <Animated.View
-                    key={fish.id}
+                    <Animated.View
+                      key={fish.id}
                       entering={FadeInDown.delay(180 + index * 30).duration(240)}
-                    style={{ width: '48%' }}
-                  >
-                    <GlassCard 
-                      style={styles.fishCard}
-                      onPress={() => handleSelectSpecies(fish)}
-                      animated={false}
+                      style={{ width: '48%' }}
                     >
+                      <GlassCard
+                        style={styles.fishCard}
+                        onPress={() => handleSelectSpecies(fish)}
+                        animated={false}
+                      >
                         {hasImage ? (
                           <View style={styles.fishCardIcon}>
                             <FishThumb imageKey={(fish as any).image_key ?? (fish as any).imageKey ?? null} size={44} />
                           </View>
                         ) : (
-                      <View style={[styles.fishCardIcon, { backgroundColor: fish.color }]}>
-                        <Text style={{ fontSize: 28 }}>🐠</Text>
-                      </View>
+                          <View style={[styles.fishCardIcon, { backgroundColor: fish.color }]}>
+                            <Text style={{ fontSize: 28 }}>🐠</Text>
+                          </View>
                         )}
-                      <Text style={[styles.fishCardName, { color: colors.text }]} numberOfLines={1}>
-                        {fish.commonName}
-                      </Text>
-                      <Text style={[styles.fishCardScientific, { color: colors.textSecondary }]} numberOfLines={1}>
-                        {fish.scientificName}
-                      </Text>
-                      <View style={styles.fishCardBadges}>
-                        <Badge 
-                          label={fish.difficulty} 
-                          variant={fish.difficulty === 'easy' ? 'success' : fish.difficulty === 'medium' ? 'warning' : 'danger'}
-                          size="small"
-                        />
-                        <Text style={[styles.fishCardSize, { color: colors.textSecondary }]}>{formatVolume(fish.minTankGallons)}+</Text>
-                      </View>
-                    </GlassCard>
-                  </Animated.View>
+                        <Text style={[styles.fishCardName, { color: colors.text }]} numberOfLines={1}>
+                          {fish.commonName}
+                        </Text>
+                        <Text style={[styles.fishCardScientific, { color: colors.textSecondary }]} numberOfLines={1}>
+                          {fish.scientificName}
+                        </Text>
+                        <View style={styles.fishCardBadges}>
+                          <Badge
+                            label={fish.difficulty}
+                            variant={fish.difficulty === 'easy' ? 'success' : fish.difficulty === 'medium' ? 'warning' : 'danger'}
+                            size="small"
+                          />
+                          <Text style={[styles.fishCardSize, { color: colors.textSecondary }]}>{formatVolume(fish.minTankGallons)}+</Text>
+                        </View>
+                      </GlassCard>
+                    </Animated.View>
                   );
                 })}
               </View>
@@ -435,8 +435,8 @@ export default function CatalogScreen() {
                   <Text style={[styles.emptyTitle, { color: colors.text }]}>No fish found</Text>
                   <Text style={[styles.emptyText, { color: colors.textSecondary }]}>Try adjusting your filters or search</Text>
                   {activeFiltersCount > 0 && (
-                    <Button 
-                      title="Clear Filters" 
+                    <Button
+                      title="Clear Filters"
                       onPress={clearFilters}
                       variant="outline"
                       size="small"
@@ -457,8 +457,8 @@ export default function CatalogScreen() {
                       entering={FadeInDown.delay(180 + index * 30).duration(240)}
                       style={{ width: '48%' }}
                     >
-                      <GlassCard 
-                        style={styles.fishCard} 
+                      <GlassCard
+                        style={styles.fishCard}
                         animated={false}
                         onPress={() => {
                           setSelectedFlora(flora);
@@ -475,8 +475,8 @@ export default function CatalogScreen() {
                           {flora.scientificName || flora.waterType}
                         </Text>
                         <View style={styles.fishCardBadges}>
-                          <Badge 
-                            label={flora.difficulty} 
+                          <Badge
+                            label={flora.difficulty}
                             variant={flora.difficulty === 'easy' ? 'success' : flora.difficulty === 'medium' ? 'warning' : 'danger'}
                             size="small"
                           />
@@ -496,8 +496,8 @@ export default function CatalogScreen() {
                   <Text style={styles.emptyTitle}>No plants or corals found</Text>
                   <Text style={styles.emptyText}>Try adjusting your filters or search</Text>
                   {activeFiltersCount > 0 && (
-                    <Button 
-                      title="Clear Filters" 
+                    <Button
+                      title="Clear Filters"
                       onPress={clearFilters}
                       variant="outline"
                       size="small"
@@ -510,33 +510,41 @@ export default function CatalogScreen() {
 
           {activeTab === 'equipment' && (
             <View style={styles.fishGrid}>
-              {equipmentCatalog.map((item, index) => (
-                <Animated.View
-                  key={item.id}
-                  entering={FadeInDown.delay(180 + index * 30).duration(240)}
-                  style={{ width: '48%' }}
-                >
-                  <GlassCard 
-                    style={styles.fishCard} 
-                    animated={false}
-                    onPress={() => {
-                      setSelectedEquipment(item);
-                      setShowEquipmentModal(true);
-                    }}
+              {equipmentCatalog.map((item, index) => {
+                // Debug: log the image key to console
+                if (__DEV__ && index < 3) {
+                  console.log(`[Catalog Equipment #${index}] imageKey:`, item.imageKey, '| brand:', item.brand);
+                }
+
+                return (
+                  <Animated.View
+                    key={item.id}
+                    entering={FadeInDown.delay(180 + index * 30).duration(240)}
+                    style={{ width: '48%' }}
                   >
-                    <View style={[styles.fishCardIcon, { backgroundColor: '#64748B' }]}>
-                      <Wrench size={28} color="#fff" />
-                    </View>
-                    <Text style={[styles.fishCardName, { color: colors.text }]} numberOfLines={1}>
-                      {item.brand}
-                    </Text>
-                    <Text style={[styles.fishCardScientific, { color: colors.textSecondary }]} numberOfLines={1}>
-                      {item.model}
-                    </Text>
-                    <Badge label={item.category} variant="default" size="small" />
-                  </GlassCard>
-                </Animated.View>
-              ))}
+                    <GlassCard
+                      style={styles.fishCard}
+                      animated={false}
+                      onPress={() => {
+                        setSelectedEquipment(item);
+                        setShowEquipmentModal(true);
+                      }}
+                    >
+                      <View style={styles.fishCardIcon}>
+                        <FishThumb imageKey={item.imageKey ?? null} size={44} />
+                      </View>
+                      <Text style={[styles.fishCardName, { color: colors.text }]} numberOfLines={1}>
+                        {item.brand}
+                      </Text>
+                      <Text style={[styles.fishCardScientific, { color: colors.textSecondary }]} numberOfLines={1}>
+                        {item.model}
+                      </Text>
+                      <Badge label={item.category} variant="default" size="small" />
+                    </GlassCard>
+                  </Animated.View>
+                );
+              })}
+
             </View>
           )}
 
@@ -548,15 +556,15 @@ export default function CatalogScreen() {
                   if (__DEV__ && index === 0) {
                     console.log('[Catalog Decor] First item imageKey:', item.imageKey);
                   }
-                  
+
                   return (
                     <Animated.View
                       key={item.id}
                       entering={FadeInDown.delay(180 + index * 30).duration(240)}
                       style={{ width: '48%' }}
                     >
-                      <GlassCard 
-                        style={styles.fishCard} 
+                      <GlassCard
+                        style={styles.fishCard}
                         animated={false}
                         onPress={() => {
                           setSelectedHardscape(item);
@@ -585,8 +593,8 @@ export default function CatalogScreen() {
                   <Text style={styles.emptyTitle}>No decorations found</Text>
                   <Text style={styles.emptyText}>Try adjusting your filters or search</Text>
                   {activeFiltersCount > 0 && (
-                    <Button 
-                      title="Clear Filters" 
+                    <Button
+                      title="Clear Filters"
                       onPress={clearFilters}
                       variant="outline"
                       size="small"
@@ -692,70 +700,70 @@ export default function CatalogScreen() {
       >
         {selectedSpecies && (() => {
           const hasImage = (selectedSpecies as any).image_key || (selectedSpecies as any).imageKey;
-          
+
           return (
-          <View style={styles.compatibilityContent}>
-            <View style={styles.compatibilityHeader}>
+            <View style={styles.compatibilityContent}>
+              <View style={styles.compatibilityHeader}>
                 {hasImage ? (
                   <View style={styles.compatibilityIcon}>
                     <FishThumb imageKey={(selectedSpecies as any).image_key ?? (selectedSpecies as any).imageKey ?? null} size={72} />
                   </View>
                 ) : (
-              <View style={[styles.compatibilityIcon, { backgroundColor: selectedSpecies.color }]}>
-                <Text style={{ fontSize: 36 }}>🐠</Text>
-              </View>
+                  <View style={[styles.compatibilityIcon, { backgroundColor: selectedSpecies.color }]}>
+                    <Text style={{ fontSize: 36 }}>🐠</Text>
+                  </View>
                 )}
-              <View style={styles.compatibilityInfo}>
-                <Text style={[styles.compatibilityName, { color: colors.text }]}>{selectedSpecies.commonName}</Text>
-                <Text style={[styles.compatibilityScientific, { color: colors.textSecondary }]}>{selectedSpecies.scientificName}</Text>
-              </View>
-            </View>
-
-            <View style={styles.compatibilityStats}>
-              <View style={styles.compatibilityStat}>
-                <Text style={[styles.compatibilityStatLabel, { color: colors.textSecondary }]}>Min Tank</Text>
-                <Text style={[styles.compatibilityStatValue, { color: colors.text }]}>{formatVolume(selectedSpecies.minTankGallons)}</Text>
-              </View>
-              <View style={styles.compatibilityStat}>
-                <Text style={[styles.compatibilityStatLabel, { color: colors.textSecondary }]}>Adult Size</Text>
-                <Text style={[styles.compatibilityStatValue, { color: colors.text }]}>{formatLength(selectedSpecies.adultSizeInches)}</Text>
-              </View>
-              <View style={styles.compatibilityStat}>
-                <Text style={[styles.compatibilityStatLabel, { color: colors.textSecondary }]}>Temperament</Text>
-                <Text style={[styles.compatibilityStatValue, { color: colors.text }]}>{selectedSpecies.temperament}</Text>
-              </View>
-              {selectedSpecies.tempMin !== undefined && selectedSpecies.tempMax !== undefined && (
-                <View style={styles.compatibilityStat}>
-                  <Text style={[styles.compatibilityStatLabel, { color: colors.textSecondary }]}>Temp Range</Text>
-                  <Text style={[styles.compatibilityStatValue, { color: colors.text }]}>{selectedSpecies.tempMin}-{selectedSpecies.tempMax}°F</Text>
+                <View style={styles.compatibilityInfo}>
+                  <Text style={[styles.compatibilityName, { color: colors.text }]}>{selectedSpecies.commonName}</Text>
+                  <Text style={[styles.compatibilityScientific, { color: colors.textSecondary }]}>{selectedSpecies.scientificName}</Text>
                 </View>
-              )}
-              {selectedSpecies.phMin !== undefined && selectedSpecies.phMax !== undefined && (
+              </View>
+
+              <View style={styles.compatibilityStats}>
                 <View style={styles.compatibilityStat}>
-                  <Text style={[styles.compatibilityStatLabel, { color: colors.textSecondary }]}>pH Range</Text>
-                  <Text style={[styles.compatibilityStatValue, { color: colors.text }]}>{selectedSpecies.phMin}-{selectedSpecies.phMax}</Text>
+                  <Text style={[styles.compatibilityStatLabel, { color: colors.textSecondary }]}>Min Tank</Text>
+                  <Text style={[styles.compatibilityStatValue, { color: colors.text }]}>{formatVolume(selectedSpecies.minTankGallons)}</Text>
                 </View>
-              )}
-            </View>
+                <View style={styles.compatibilityStat}>
+                  <Text style={[styles.compatibilityStatLabel, { color: colors.textSecondary }]}>Adult Size</Text>
+                  <Text style={[styles.compatibilityStatValue, { color: colors.text }]}>{formatLength(selectedSpecies.adultSizeInches)}</Text>
+                </View>
+                <View style={styles.compatibilityStat}>
+                  <Text style={[styles.compatibilityStatLabel, { color: colors.textSecondary }]}>Temperament</Text>
+                  <Text style={[styles.compatibilityStatValue, { color: colors.text }]}>{selectedSpecies.temperament}</Text>
+                </View>
+                {selectedSpecies.tempMin !== undefined && selectedSpecies.tempMax !== undefined && (
+                  <View style={styles.compatibilityStat}>
+                    <Text style={[styles.compatibilityStatLabel, { color: colors.textSecondary }]}>Temp Range</Text>
+                    <Text style={[styles.compatibilityStatValue, { color: colors.text }]}>{selectedSpecies.tempMin}-{selectedSpecies.tempMax}°F</Text>
+                  </View>
+                )}
+                {selectedSpecies.phMin !== undefined && selectedSpecies.phMax !== undefined && (
+                  <View style={styles.compatibilityStat}>
+                    <Text style={[styles.compatibilityStatLabel, { color: colors.textSecondary }]}>pH Range</Text>
+                    <Text style={[styles.compatibilityStatValue, { color: colors.text }]}>{selectedSpecies.phMin}-{selectedSpecies.phMax}</Text>
+                  </View>
+                )}
+              </View>
 
-            <View style={[styles.careNotesContainer, { backgroundColor: colors.card }]}>
-              <Text style={[styles.careNotesTitle, { color: colors.primary }]}>Care Notes</Text>
-              <Text style={[styles.careNotesText, { color: colors.text }]}>{selectedSpecies.careNotes}</Text>
-            </View>
+              <View style={[styles.careNotesContainer, { backgroundColor: colors.card }]}>
+                <Text style={[styles.careNotesTitle, { color: colors.primary }]}>Care Notes</Text>
+                <Text style={[styles.careNotesText, { color: colors.text }]}>{selectedSpecies.careNotes}</Text>
+              </View>
 
-            <View style={styles.compatibilityActions}>
-              {tanks.length === 0 ? (
-                <Text style={styles.noTankText}>Create a tank first to add fish</Text>
-              ) : (
-                <Button
-                  title="Add to Tank"
-                  onPress={handleAddToTank}
-                  variant="primary"
-                  fullWidth
-                />
-              )}
+              <View style={styles.compatibilityActions}>
+                {tanks.length === 0 ? (
+                  <Text style={styles.noTankText}>Create a tank first to add fish</Text>
+                ) : (
+                  <Button
+                    title="Add to Tank"
+                    onPress={handleAddToTank}
+                    variant="primary"
+                    fullWidth
+                  />
+                )}
+              </View>
             </View>
-          </View>
           );
         })()}
       </Modal>
@@ -957,8 +965,8 @@ export default function CatalogScreen() {
         {selectedEquipment && (
           <View style={styles.compatibilityContent}>
             <View style={styles.compatibilityHeader}>
-              <View style={[styles.compatibilityIcon, { backgroundColor: '#64748B' }]}>
-                <Wrench size={48} color="#fff" />
+              <View style={styles.compatibilityIcon}>
+                <FishThumb imageKey={selectedEquipment.imageKey ?? null} size={72} />
               </View>
               <View style={styles.compatibilityInfo}>
                 <Text style={[styles.compatibilityName, { color: colors.text }]}>{selectedEquipment.brand}</Text>
